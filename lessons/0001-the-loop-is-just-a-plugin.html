@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 1 课 · Loop 只是一个插件——而这正是它还能工作的原因</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0001 · dsh 架构</div>
+  <h1>Loop 只是一个插件——而这正是它还能工作的原因</h1>
+  <div class="meta">目标:10 分钟内搞懂「一切都是插件」的真正含义,以及拔掉 agent-loop 后系统到底会发生什么。</div>
+</header>
+
+<blockquote>
+你的原话:「如果把底层的 loop『拔掉』,岂不是直接把主功能破坏了?那还怎么正常工作呢?」
+<br>这节课就回答这一个问题的三层答案:<strong>没有什么被"破坏"</strong>、<strong>失败是惰性的</strong>、<strong>这个设计恰恰是为了让你能换 loop</strong>。
+</blockquote>
+
+<h2>1. 先纠正一个直觉:不存在「拔掉就坏」的内核</h2>
+<p>大多数框架有一个不可拆卸的内核,外围才是插件。dsh 的答案更激进:<strong>root 配置是一个空列表</strong>(<span class="src"><a href="../apps/cli/src/profile-boot.ts">apps/cli/src/profile-boot.ts</a> 中的 <code>PROFILE_ROOT_CONFIG</code>)。代码里没有一行写着「启动时必须加载 agent-loop」。你运行的那个「dsh」,是启动时把四层 patch 叠出来的<strong>组合结果</strong>:</p>
+<pre><code>空 root
+ ← bundle patches(dsh-base → dsh-headless …)
+ ← profile patch($DSH_HOME/profiles/&lt;name&gt;/cordis.patch.yml)
+ ← home patch($DSH_HOME/cordis.patch.yml)
+ ← --patch overlays(命令行一次性)</code></pre>
+<p>每一行 patch 只是往清单里加/改/禁用插件行。所以「dsh 产品」不在代码里,在<a href="../reference/dsh-plugin-architecture-map.html">组合层叠</a>里——这是第一个心智模型转变。</p>
+
+<h2>2. agent-loop 究竟是个什么插件?</h2>
+<p>看真实代码(<a href="../packages/core/agent-loop/src/index.ts">packages/core/agent-loop/src/index.ts</a>:296):</p>
+<pre><code>export class AgentLoop extends Service implements AgentFactory {
+  static inject = ['agents', 'sessions', 'llm', 'tools', 'systemPrompt']
+  constructor(ctx, config) {
+    super(ctx, 'agentLoop')          // 贡献服务 ctx.agentLoop
+    ctx.effect(() =&gt; ctx.agents.setFactory(this))  // ★ 关键一行
+  }
+}</code></pre>
+<p>两件事读出设计:</p>
+<ul>
+  <li><code>inject</code>:它<strong>消费</strong>五个服务——agent 注册表、会话、LLM、工具、system prompt。依赖没就位它就一直 pend,不启动。</li>
+  <li><code>ctx.agents.setFactory(this)</code>:它<strong>贡献</strong>自己的唯一方式,是把<strong>自己注册成 <code>AgentFactory</code></strong>。也就是说:<code>packages/core/agent</code> 里的注册表只认「工厂」这个接口,根本不知道有哪个具体 loop。</li>
+</ul>
+<p>真正的循环(模型调用 → 工具调用 → 重复)在 <a href="../packages/core/agent-loop/src/agent.ts">agent.ts</a> 的 <code>ReactLoopAgent</code> 里:<code>kick()</code> 里的 <code>while (await this.turn())</code>。它只是工厂造出来的默认实现。</p>
+
+<h2>3. 拔掉它:失败时间线</h2>
+<p>现在把 patch 里那行 <code>agent-loop</code> 标成 <code>disabled: true</code>。逐时刻推演:</p>
+<table>
+  <tr><th>时刻</th><th>发生什么</th></tr>
+  <tr><td>启动</td><td><strong>完全正常。</strong>其余几十个插件照常挂载。没有任何代码「要求」loop 存在。</td></tr>
+  <tr><td>等待期</td><td>没有任何人调 <code>setFactory()</code>,<code>ctx.agents</code> 的工厂槽位保持 <code>undefined</code>。系统不崩溃、不报警。</td></tr>
+  <tr><td>有入口调 <code>agents.create(…)</code></td><td>此刻抛错:<code>no agent factory registered (load an agent-loop plugin)</code>(<span class="src"><a href="../packages/core/agent/src/index.ts">packages/core/agent/src/index.ts</a>:392</span>)</td></tr>
+</table>
+<p>三个要点:</p>
+<ul>
+  <li><strong>惰性失败</strong>:错误只在真正需要造 agent 时发生。会话、持久化、settings、工具——全都照常工作。这不是「主功能被破坏」,而是「这项能力暂时无人提供」。</li>
+  <li><strong>错误信息即诊断</strong>:报错直接告诉你解法——装回一个 agent-loop 插件。这是 dsh 的约定「misconfiguration fails loud」。</li>
+  <li><strong>空位就是邀请</strong>:那个空着的工厂槽位,任何插件都可以填。这正是问题第三部分的伏笔。</li>
+</ul>
+
+<div class="callout">
+<strong>为什么这样设计?</strong> 因为「Agent 的循环策略」本身就是个可替换决策:ReAct 循环、单轮问答、计划-执行分离、带审批闸门的循环……dsh 把它建模成一个接缝(<code>AgentFactory</code>),默认实现叫 <code>dsh-agent-loop</code>。<strong>「loop 是插件」不是为了炫技,是为了让你能不动其他 50 个插件地换掉它。</strong>
+</div>
+
+<h2>检索练习</h2>
+<p>不翻上文,凭记忆回答。点击选项立即得到反馈。</p>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q1. 把 agent-loop 从组合里禁用后,dsh 启动的那一刻会发生什么?</p>
+  <button data-correct="false">启动立即崩溃,报缺少核心插件</button>
+  <button data-correct="false">启动成功但所有插件都进入 pend 状态</button>
+  <button data-correct="true">启动完全正常,其余插件照常工作</button>
+  <button data-correct="false">启动正常,但系统日志持续报警告</button>
+  <div class="explain">启动完全正常。root 是空列表、没有代码强制要求 loop;只有当某个入口真正调用 <code>agents.create()</code> 时才会抛 <code>no agent factory registered</code>。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q2. agent-loop 插件向系统贡献能力的唯一关键动作是哪一行?</p>
+  <button data-correct="false">在构造函数里启动 turn 循环线程</button>
+  <button data-correct="true">调用 ctx.agents.setFactory(this)</button>
+  <button data-correct="false">向 ctx.llm 注册自己的模型适配器</button>
+  <button data-correct="false">向事件总线广播 agent-loop-ready</button>
+  <div class="explain"><code>ctx.effect(() =&gt; ctx.agents.setFactory(this))</code>。它把自己注册成 <code>AgentFactory</code>;注册表只认接口,不知道具体实现。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q3. 你想完全换掉默认 loop(比如换成单轮问答),正确的做法是?</p>
+  <button data-correct="false">修改 packages/core/agent 的注册表代码</button>
+  <button data-correct="false">fork 整个 dsh-agent-loop 包改内部代码</button>
+  <button data-correct="true">写一个插件实现 AgentFactory 并 setFactory</button>
+  <button data-correct="false">在 cordis.yml 里给 agent-loop 传参数</button>
+  <div class="explain">接缝就是为此设计的:实现 <code>AgentFactory</code>(接口在 packages/core/agent/src/index.ts:178)并调 <code>ctx.agents.setFactory(this)</code>,其余插件零改动。下一课我们动手做。</div>
+</div>
+
+<h2>动手验证(强烈推荐,共 5 分钟)</h2>
+<ol>
+  <li>在仓库根跑 <code>dsh --profile headless --dump-config</code>(或 <code>pnpm dsh …</code>),在输出里找到 <code>agent-loop</code> 那一行——亲眼看到「产品 = 一份组合清单」。</li>
+  <li>打开 <a href="../examples/headless-agent/cordis.yml">examples/headless-agent/cordis.yml</a>,找出是哪几行让它成为一个完整 agent(提示:LLM provider 行、agent-spine 行、backends 行)。这个文件就是最小可运行组合的活样本。</li>
+  <li>进阶(可选):写一个只含 <code>- id: agent-loop / disabled: true</code> 的小 patch 文件,用 <code>--patch</code> 挂上,跑一次任务,观察报错出现的位置和内容是否与本课预测一致。</li>
+</ol>
+
+<h2>本课收获</h2>
+<ul>
+  <li>root 是空列表;「dsh」是四层 patch 叠出的组合结果。</li>
+  <li>agent-loop 靠 <code>inject</code> 消费五服务、靠 <code>setFactory</code> 贡献自己。</li>
+  <li>拔掉它是惰性失败:启动正常,<code>agents.create()</code> 时才报 <code>no agent factory registered</code>。</li>
+  <li>空着的工厂槽位 = 你 DIY 的入口。</li>
+</ul>
+
+<h2>下一课预告:亲手 DIY</h2>
+<p>三条路任选:<strong>① 换 LLM provider</strong>(一行 patch)、<strong>② 用 preset/patch 重组合自己的 agent</strong>、<strong>③ 写一个自定义 loop 插件</strong>实现 <code>AgentFactory</code>。告诉你的 agent 老师你想先走哪条。</p>
+
+<div class="callout">
+<strong>推荐精读</strong>(本课的原始依据,15 分钟):
+<a href="../docs/architecture.md">docs/architecture.md</a>(重点:「Profiles and bundles」「Turn flow」「Where new behavior goes」三节)+
+<a href="../docs/cordis-primer.md">docs/cordis-primer.md</a>(Cordis 五概念)。
+配套速查表:<a href="../reference/dsh-plugin-architecture-map.html">dsh 插件架构地图</a>。
+</div>
+
+<footer>
+  <p>dsh 架构课程 · Lesson 0001 · 2026-08-15 · <a href="../reference/dsh-plugin-architecture-map.html">参考表</a></p>
+  <p>有任何不清楚的地方——随时回来问你的 agent 老师,它读过整个仓库的源码。</p>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+
+</body>
+</html>

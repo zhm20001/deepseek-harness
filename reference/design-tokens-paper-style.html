@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>参考 · 纸感信纸风 Design Tokens（唯一权威定义）</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/tokens-paper.css">
+<style>
+  .swatches { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+  .swatch { width: 110px; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; font-size: 12px; }
+  .swatch .chip { height: 44px; }
+  .swatch .name { padding: 5px 8px; font-family: ui-monospace, Menlo, monospace; }
+  .demo-serif { font-family: var(--font-serif); font-size: 22px; margin: 10px 0; }
+  .demo-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 18px; margin: 12px 0; }
+  .demo-btn { display: inline-block; background: var(--accent); color: #fff; padding: 7px 18px; border-radius: 8px; font-family: var(--font-serif); }
+  code.tok { background: #f4f2ec; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Reference · 设计系统</div>
+  <h1>纸感信纸风 Design Tokens</h1>
+  <div class="meta">从 palette / diary / lessons 三个项目中提取的统一风格。值的<strong>唯一权威定义在 <code>assets/tokens-paper.css</code></strong>，本页是它的可视化文档。</div>
+</header>
+
+<h2>1. 色板</h2>
+<div class="swatches">
+  <div class="swatch"><div class="chip" style="background:#fffff8"></div><div class="name">--paper #fffff8</div></div>
+  <div class="swatch"><div class="chip" style="background:#f6f4eb"></div><div class="name">--desk #f6f4eb</div></div>
+  <div class="swatch"><div class="chip" style="background:#fffdf4"></div><div class="name">--card-bg #fffdf4</div></div>
+  <div class="swatch"><div class="chip" style="background:#1a1a1a"></div><div class="name">--ink #1a1a1a</div></div>
+  <div class="swatch"><div class="chip" style="background:#3a3a35"></div><div class="name">--ink-body #3a3a35</div></div>
+  <div class="swatch"><div class="chip" style="background:#6b6a63"></div><div class="name">--ink-muted #6b6a63</div></div>
+  <div class="swatch"><div class="chip" style="background:#b0413e"></div><div class="name">--accent #b0413e</div></div>
+  <div class="swatch"><div class="chip" style="background:#d8d4c8"></div><div class="name">--rule #d8d4c8</div></div>
+  <div class="swatch"><div class="chip" style="background:#f4f2ea"></div><div class="name">--chip-bg #f4f2ea</div></div>
+  <div class="swatch"><div class="chip" style="background:#2e6e3e"></div><div class="name">--ok #2e6e3e</div></div>
+  <div class="swatch"><div class="chip" style="background:#a03030"></div><div class="name">--bad #a03030</div></div>
+</div>
+<p style="font-size:13px">2026-08 新增：<code class="tok">--desk</code>（纸下桌面色，diary 首创）、状态色 <code class="tok">--ok / --bad</code>（lessons 血统）。加色流程：先在此文档试挂 → 浏览器目检 → 固化进 tokens-paper.css。</p>
+
+<h2>2. 字体</h2>
+<p class="demo-serif">标题与正文用衬线：宋体 × Palatino（--font-serif）</p>
+<p style="font-size:14px">辅助文字（标签、代码、meta）用无衬线/等宽：<span style="font-family:'SF Mono',ui-monospace,Menlo,monospace">SF Mono / ui-monospace</span>，与 lessons 的 course.css 一致。</p>
+
+<h2>3. 组件形态</h2>
+<div class="demo-card">
+  <strong>卡片</strong>：纸底 + 1px 米色边框 + 10px 圆角；hover 时边框转近黑并上浮投影。
+</div>
+<p><span class="demo-btn">主按钮</span>　朱红底白字，衬线字体，hover 加深为 #963633。</p>
+<p>状态色用法：<span style="color:#2e6e3e; font-weight:600">✓ 成功（--ok）</span>　<span style="color:#a03030; font-weight:600">✗ 失败（--bad）</span>，配 <code class="tok">--ok-soft / --bad-soft</code> 弱化底色（见 lessons 测验组件）。</p>
+<p>边框层级：<code class="tok">1px solid #d8d4c8</code>（弱）→ <code class="tok">2px solid #1a1a1a</code>（强，如 board 外框）。</p>
+
+<h2>4. 新项目接入方式</h2>
+<ol>
+  <li>引入权威源 <code class="tok">assets/tokens-paper.css</code>（<code class="tok">&lt;link&gt;</code>、构建 import，或零构建项目内联其 <code class="tok">:root</code> 块并注明来源）；</li>
+  <li>项目内部只做一层前缀别名，如 <code class="tok">--pb-paper: var(--paper)</code>，业务样式一律消费前缀变量；</li>
+  <li>不直接写十六进制色值、不直接写字体栈——出现第二次即是坏味道；</li>
+  <li>多主题（如 palette 的 fresh/glass）：用 <code class="tok">data-theme</code> 属性覆写同一批 token，而非两套类名。</li>
+</ol>
+
+<h2>5. 形态对照（2026-08-31 开源定稿：vendor 副本制）</h2>
+<table>
+  <tr><th>项目</th><th>消费方式</th><th>落点</th></tr>
+  <tr><td><strong>权威源</strong></td><td>—（唯一裸值所在地）</td><td>deepseek-harness/assets/tokens-paper.css</td></tr>
+  <tr><td>lessons</td><td>course.css 顶部 <code class="tok">@import</code> + 本地别名（同仓库，无需副本）</td><td>deepseek-harness/assets/course.css</td></tr>
+  <tr><td>palette</td><td>vendor 副本 + index.tsx 副作用导入 + 别名层</td><td>dsh-plugin-palette-board/src/client/tokens-paper.css</td></tr>
+  <tr><td>diary</td><td>vendor 副本 + 运行时 readFileSync 内联 + 别名层</td><td>dsh-diary/assets/tokens-paper.css + src/paths.ts</td></tr>
+</table>
+<p>原则（开源发布定稿版）：<strong>真相只有一份（权威文件）；插件仓库内的副本是带 sha256 生成头的衍生品，随仓库提交</strong>——因为仓库内容即分发物。改风格 = 改权威 → <code class="tok">node assets/sync-tokens.mjs</code> → 重建；<strong>push 前必须 <code class="tok">--check</code></strong>。曾用 symlink 活指针方案，因插件开源而退役：公开仓库里的符号链接指不进别人的机器。</p>
+<p>相关课程：<a href="../lessons/0007-where-does-the-style-live.html">第 7 课 · 风格存在哪里？</a></p>
+
+</body>
+</html>

@@ -1,0 +1,184 @@
+/* 课程共享样式表 —— 所有 lessons 共用的排版基座。
+   词汇表与既有 lesson 标记保持一致：.lesson-header/.kicker/.meta、.callout、
+   .quiz/.q/.explain/.show、button.correct/.wrong、footer。
+   设计目标：Tufte 式安静排版，中文优先字栈，打印友好。
+
+   颜色/字体/圆角一律消费权威源 tokens-paper.css（@import 引入），
+   本文件只保留：本地别名、布局、以及 dark 主题覆写块（裸值豁免区）。 */
+
+@import url('./tokens-paper.css');
+
+:root {
+  /* 课程本地别名：lessons 旧命名 → 权威 token */
+  --ink-soft: var(--ink-muted);
+}
+
+* { box-sizing: border-box; }
+
+html { font-size: 17px; }
+
+body {
+  margin: 0 auto;
+  padding: 3rem 1.5rem 5rem;
+  max-width: 46rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  line-height: 1.75;
+  text-rendering: optimizeLegibility;
+}
+
+code, pre {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+code {
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+
+pre code { background: none; padding: 0; word-break: normal; }
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+
+h1, h2, h3 {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+}
+
+h2 {
+  margin-top: 2.6rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 1.3rem;
+}
+
+h3 { margin-top: 1.8rem; font-size: 1.08rem; }
+
+.lesson-header { border-bottom: 2px solid var(--ink); padding-bottom: 1.2rem; }
+.lesson-header .kicker {
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.lesson-header h1 { margin: 0.4rem 0 0.6rem; font-size: 1.7rem; }
+.lesson-header .meta {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  padding: 0.55rem 0.9rem;
+  border-radius: 0 4px 4px 0;
+}
+
+blockquote {
+  margin: 1.6rem 0;
+  padding: 0.2rem 1.2rem;
+  border-left: 3px solid var(--rule);
+  color: var(--ink-soft);
+}
+
+.callout {
+  margin: 1.4rem 0;
+  padding: 0.8rem 1.1rem;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  font-size: 0.97rem;
+}
+
+table { border-collapse: collapse; width: 100%; margin: 1.4rem 0; font-size: 0.93rem; }
+th, td { border: 1px solid var(--rule); padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 600; }
+tr:nth-child(even) td { background: #faf8f2; } /* 课程专属斑马纹，不入权威源 */
+
+ol, ul { padding-left: 1.4rem; }
+li { margin: 0.4rem 0; }
+
+/* 测验组件（配合 assets/quiz.js） */
+.quiz {
+  margin: 1.2rem 0;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--card-bg);
+}
+.quiz .q { margin-top: 0; font-weight: 600; }
+.quiz button {
+  display: block;
+  width: 100%;
+  margin: 0.5rem 0;
+  padding: 0.55rem 0.9rem;
+  text-align: left;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.quiz button:hover { border-color: var(--ink-soft); }
+.quiz button.correct { border-color: var(--ok); background: var(--ok-soft); }
+.quiz button.correct::after { content: " ✓"; color: var(--ok); font-weight: 700; }
+.quiz button.wrong { border-color: var(--bad); background: var(--bad-soft); }
+.quiz button.wrong::after { content: " ✗"; color: var(--bad); font-weight: 700; }
+.quiz .explain {
+  display: none;
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed var(--rule);
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+.quiz .explain.show { display: block; }
+
+footer {
+  margin-top: 3.5rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--ink);
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+@media print {
+  body { max-width: none; padding: 0; font-size: 11pt; background: #fff; }
+  .quiz button { border: 1px solid #999; }
+  .quiz .explain { display: block; }
+  a { color: inherit; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8e4da;
+    --ink-soft: #a8a294;
+    --paper: #201e1a;
+    --rule: #3a362e;
+    --accent: #e07a50;
+    --accent-soft: #332720;
+    --ok: #7fb98a;
+    --ok-soft: #21301f;
+    --bad: #d08080;
+    --bad-soft: #342424;
+    --code-bg: #2a2721;
+  }
+  .quiz, table { background: var(--paper); }
+  tr:nth-child(even) td { background: #262319; }
+}

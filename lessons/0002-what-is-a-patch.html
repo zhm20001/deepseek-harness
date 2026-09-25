@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 2 课 · Patch:用 YAML 就能改造 dsh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0002 · dsh 架构</div>
+  <h1>Patch:用 YAML 就能改造 dsh</h1>
+  <div class="meta">目标:10 分钟后,你能在不写一行 TypeScript 的情况下,给 dsh 换配置、拔插件、加插件——这是 DIY 的第一级工具。</div>
+</header>
+
+<blockquote>
+上节课留下的问题:「patch 到底是什么?」一句话:<strong>patch 是一份声明式 YAML,描述「对插件清单做哪三种动作」</strong>。上一课我们把插件清单想成一张购物清单——base bundle 一次性写满整张清单,后续每一层 patch 只在清单上做批注:换掉某行、划掉某行、追加几行。
+</blockquote>
+
+<h2>1. 三种动作,就是整个语法</h2>
+<p>真实文件:<a href="../packages/bundle/headless/cordis.patch.yml">packages/bundle/headless/cordis.patch.yml</a>(dsh 无界面模式的全部定制,只有 35 行)。它恰好三种动作各用了一次:</p>
+<pre><code># 动作① 改配置:按 id 定位 system-prompt 行,替换它的 config
+- id: system-prompt
+  config:
+    persona: &gt;-
+      You are a coding agent powered by the {{model}} model...
+
+# 动作② 禁用:把 hmr 行从组合里划掉
+- id: hmr
+  disabled: true
+
+# 动作③ 追加:插入两个全新插件行
+- insert:
+    - id: code-runtime
+      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+    - id: headless-runner
+      name: '@deepseek-ai/dsh-headless'
+      config:
+        task: !!js ctx.headlessStartup.task</code></pre>
+<p>行里的字段含义:</p>
+<table>
+  <tr><th>字段</th><th>作用</th></tr>
+  <tr><td><code>id</code></td><td>这一行的稳定标识,<strong>后续所有 patch 都靠它定位这一行</strong>(所以 id 永不变,包名可以换)</td></tr>
+  <tr><td><code>name</code></td><td>要加载的 npm 插件包名</td></tr>
+  <tr><td><code>config</code></td><td>传给插件 <code>static Config</code> schema 的配置</td></tr>
+  <tr><td><code>disabled</code></td><td><code>true</code> = 从组合中移除;可写 <code>!!js</code> 表达式按平台/环境条件移除</td></tr>
+  <tr><td><code>!!js</code> 表达式</td><td><code>config</code> 和 <code>disabled</code> 的值可以是 JS 表达式,如 <code>!!js process.platform === 'win32'</code> 或读环境变量</td></tr>
+</table>
+
+<h2>2. 四条叠加规则</h2>
+<ol>
+  <li><strong>按 id 定位,整段替换</strong>:patch 改 config 时替换目标行的<strong>整个</strong> config,不做深合并。所以「某行在各模式下不同」的配置不放 base,放到各模式的 bundle patch 里(base 文件开头注释明确写了这条约定)。</li>
+  <li><strong>后写的层赢</strong>:同一 id,排在后面的层覆盖前面的层。这就是上一课层叠图(<span class="src"><a href="../reference/dsh-plugin-architecture-map.html">架构地图 · 组合层叠</a></span>)里 <code>--patch</code> 优先级最高的原因。</li>
+  <li><strong>行顺序无加载语义</strong>:清单里行的先后不代表加载顺序,激活由「依赖的服务是否就位」驱动(inject 决定)。</li>
+  <li><strong>用户层随时可加</strong>:你自己写一个 <code>- insert:</code> 小文件,用 <code>dsh --profile X --patch my.yml</code> 挂上即可。真实例子:<a href="../examples/web-schedule/cordis.yml">examples/web-schedule/cordis.yml</a> 整个文件只有 6 行——两个 insert,就给 Web 模式加了一个「定时任务」能力。</li>
+</ol>
+
+<h2>3. 这对你意味着什么</h2>
+<div class="callout">
+dsh 的定制是<strong>分级的</strong>:配置级(YAML patch,今天就会)、组合级(profile + bundle)、代码级(写插件,下一课)。<strong>大部分「我想改一下」的需求止步于第一级。</strong>换 LLM provider、换 persona、拔掉某个工具、加一个现成插件包——全是 patch 能完成的,零 TypeScript。
+</div>
+
+<h2>检索练习</h2>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q1. 你想在已有组合里加一个全新的插件包,patch 里该写什么?</p>
+  <button data-correct="false">写 <code>id:</code> 加 <code>enable: true</code></button>
+  <button data-correct="false">直接写 <code>name:</code> 一行即可</button>
+  <button data-correct="true">写 <code>- insert:</code> 加新行</button>
+  <button data-correct="false">写 <code>- append:</code> 加新行</button>
+  <div class="explain">三种动作只有 改配置 / 禁用 / <code>insert</code> 追加。新行要给 <code>id</code>(供以后定位)和 <code>name</code>(包名)。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q2. profile patch 把某行 config 里的 <code>timeoutMs: 60000</code> 改成 <code>30000</code>,该行原有其他 config 字段会怎样?</p>
+  <button data-correct="false">保留不变,只改这一个字段</button>
+  <button data-correct="true">整体被替换,其他字段消失</button>
+  <button data-correct="false">合并时抛出冲突错误</button>
+  <button data-correct="false">取决于字段是否有默认值</button>
+  <div class="explain">patch 对目标行是<strong>整段替换</strong>,不深合并。想保留其他字段就要在新 config 里把它们重写一遍。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q3. patch 清单里 agent-loop 行排在第 4 位、bash 行排在第 40 位,这意味着什么?</p>
+  <button data-correct="false">agent-loop 先加载、先启动</button>
+  <button data-correct="false">bash 依赖 agent-loop 才能启动</button>
+  <button data-correct="true">什么都不意味,顺序无语义</button>
+  <button data-correct="false">agent-loop 的优先级更高</button>
+  <div class="explain">行顺序纯粹是给人读的;启动时机由服务可用性驱动——谁的 <code>inject</code> 先满足谁先活。</div>
+</div>
+
+<h2>动手验证(8 分钟)</h2>
+<ol>
+  <li>跑 <code>dsh --profile headless --dump-config</code>(在仓库根可 <code>pnpm dsh …</code>),对照输出找到 <code>system-prompt</code>、<code>agent-loop</code>、<code>headless-runner</code> 三行——确认「最终产品 = 叠加后的清单」。</li>
+  <li>抄 <a href="../examples/web-schedule/cordis.yml">web-schedule 的 6 行</a>,改成你自己的:写一个 <code>my.yml</code>,内容为 <code>- id: system-prompt / config: persona: 你想要的人设</code>,用 <code>--patch my.yml</code> 挂到 headless 跑一次,看 persona 是否变了。</li>
+  <li>(可选)在同一文件里再写 <code>- id: agent-loop / disabled: true</code>,再跑一次——亲手复现 <a href="0001-the-loop-is-just-a-plugin.html">第 1 课</a>预测的 <code>no agent factory registered</code> 报错。</li>
+</ol>
+
+<h2>本课收获</h2>
+<ul>
+  <li>patch = 三种动作(改 config / disabled / insert)的声明式 YAML。</li>
+  <li>按 id 定位、整段替换、后写赢、行序无语义。</li>
+  <li>配置级 DIY 已经到手——你现在能改任何 dsh 配置而不写一行 TS。</li>
+</ul>
+
+<h2>下一课:为你自己的项目选一条集成路径</h2>
+<p>你的目标是「个人项目 × AI」。下一课我们把四条路摆开对比——直接调 LLM API / 把 dsh 当 agent 服务(JSON-RPC)/ 写一个自己的 tool 插件 / 内嵌 agent-spine——并按你的项目特点选一条开跑。想预热的话,先扫一眼 <a href="../examples/jsonrpc-agent/minimal.py">examples/jsonrpc-agent/minimal.py</a>(用 Python 十几行连上一个 dsh agent)。</p>
+
+<div class="callout">
+<strong>推荐精读</strong>(8 分钟):<a href="../docs/architecture.md">docs/architecture.md</a> 的「Profiles and bundles」一节 + <a href="../packages/bundle/base/cordis.patch.yml">base patch 开头注释</a>(替换不合并的约定就写在那里)。
+配套速查表:<a href="../reference/dsh-plugin-architecture-map.html">dsh 插件架构地图</a>(已补 Patch 行语法一节)。
+</div>
+
+<footer>
+  <p>dsh 架构课程 · Lesson 0002 · 2026-08-17 · <a href="0001-the-loop-is-just-a-plugin.html">上一课</a> · <a href="../reference/dsh-plugin-architecture-map.html">参考表</a></p>
+  <p>有任何不清楚的地方——随时回来问你的 agent 老师,它读过整个仓库的源码。</p>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+
+</body>
+</html>

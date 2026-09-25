@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 10 课 · 契约是两个人签的——「装好还能用,六天后爆炸」的完整逻辑</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0010 · 真实事故解剖 II</div>
+  <h1>契约是两个人签的——「装好还能用,六天后爆炸」的完整逻辑</h1>
+  <div class="meta">目标:15 分钟。这课回答你自己的两个疑问:「1.3k 星的插件怎么会有这种 bug?」和「我装好时明明还能开新对话,那触发原因只有它吗?」。答案的核心是一句话:<strong>bug 不属于任何一方,它属于一个「配对」——旧插件 × 新宿主,而把这对组合拼到一起的,是 8/29 深夜的一次 git pull。</strong></div>
+</header>
+
+<blockquote>
+这不是编的案例。2026-09-04 晚,你在 dsh web 里选任何工作区都会被"弹回",无法新建对话。上一轮已修复(升级 dsh-context 0.33.1 → 0.41.3);本课把<strong>事件的完整逻辑关系</strong>讲透——两个当事人的证据全部来自你自己的机器:git reflog、会话日志、投影缓存、npm 发布记录,每一分钟都对得上。
+</blockquote>
+
+<h2>1. 先给结论:这不是「一个插件的 bug」</h2>
+<p>爆炸需要<strong>三个条件同时为真</strong>,缺一不可:</p>
+<table>
+  <tr><th>条件</th><th>由谁提供</th><th>什么时候开始为真</th></tr>
+  <tr><td>A. 插件在「空白新会话」上产出含 <code>undefined</code> 字段的投影值</td><td>dsh-context 0.33.1</td><td>装它的那一刻(8/27)就为真——但无害</td></tr>
+  <tr><td>B. 宿主把插件投影值塞进「创建瞬间」的广播里</td><td>新宿主架构(Session Controller)</td><td>8/29 23:20 你 pull 进来之后</td></tr>
+  <tr><td>C. 宿主对广播内容做「无损 JSON」校验,不合格就抛错回滚</td><td>新宿主架构(api-remotes)</td><td>同上</td></tr>
+</table>
+<p>8/27–8/29:A 真、B 假、C 假 → 平安无事(所以你的记忆没错,装好时<strong>确实</strong>能开新对话)。8/29 23:20 之后:A 真、B 真、C 真 → <strong>每一次新建会话必炸</strong>。你 9/4 才发现,只是因为这六天里你没有点过"新建对话"——打开旧会话走的是另一条路,不经过这段代码。</p>
+<div class="callout">关键观念:<strong>「有没有 bug」不是单个软件的属性,是一对版本的属性。</strong>dsh-context 0.33.1 对它出生时的宿主是无害的;宿主的新契约对全新插件也是无害的;病出在配对上。就像老插头在老墙上的插座里没病,墙换成了新国标,老插头才「有病」——病不属于插头也不属于墙,属于这对组合。</div>
+
+<h2>2. 三张名词卡(零基础版)</h2>
+
+<h3>名词卡一:契约(contract)= 双方对数据格式的约定</h3>
+<p>两个软件部件合作,必须先约好「我递给你的数据长什么样」。这约定叫<strong>契约</strong>。这次事故的契约是:凡是从宿主<strong>广播</strong>给浏览器的事件,参数必须是<strong>无损 JSON(lossless JSON)</strong>——意思是:这份数据转成 JSON 文本再转回来,一个字节都不丢。</p>
+<p>为什么 <code>undefined</code> 违约?因为 <strong>JSON 这个格式里根本没有 undefined 这个值</strong>。你在 Node 里跑 <code>JSON.stringify({model: undefined})</code>,得到的是 <code>"{}"</code>——字段整个消失了。所以「字段存在但值是 undefined」的数据<strong>没法无损地过 JSON 这座桥</strong>:过桥后字段就没了。宿主的校验(<code>assertJsonArgs</code>,在 <code>../packages/api/remotes/src/index.ts</code>)专门拦这个:与其让数据在桥上悄悄缺胳膊少腿,不如当场拒收、大声报错。</p>
+
+<h3>名词卡二:广播(emit)与回滚(rollback)= 一次创建,全员监听,一票否决</h3>
+<p>你在 UI 里选工作区,前端发一个 <code>session.create</code> 请求。宿主创建会话成功后,不是闷头干完就完——它要<strong>广播</strong>一条事件(<code>api-session/added</code>),相当于向全楼喊「301 房入住了一位新客人!」,喊话内容里带着客人档案(会话摘要,<code>summaryFor()</code> 在 <code>../packages/api/session-controller/src/list.ts</code> 组装——新架构把插件投影值也装进了这份档案,这就是条件 B)。</p>
+<p>关键机制在 <code>../packages/core/session/src/index.ts</code> 的 <code>announce()</code>:<strong>任何一个听众抛错,整个创建作废(回滚)</strong>——会话从登记簿上撤下,已写的目录留下一个只有 header 的「孤儿」。这是宿主故意的设计(fail-loud 的一家):与其让一个说不清状态的会话进入系统,不如推倒重来。这次抛错的听众,就是把广播转发给浏览器并做 JSON 校验的那位(条件 C)。</p>
+<p>最后一块:UI 前端收到失败后,<strong>静默</strong>清空了你的选择——catch 里连一句 console.warn 都没有。所以你看到的现象是「弹回」,而不是报错。这提醒我们验收 UI 时要多问一句:<strong>失败路径用户看得见吗?</strong></p>
+
+<h3>名词卡三:版本钉住(pinning)= <code>^0.33.1</code> 是一扇只开一条缝的门</h3>
+<p>package.json 里写 <code>"dsh-context": "^0.33.1"</code>,这个 <code>^</code>(caret)的意思是「允许兼容的升级」。但对 <strong>0.x 版本号</strong>,semver 规定 0.33 和 0.34 之间就算「不兼容」——所以 <code>^0.33.1</code> 只允许 0.33.x 内的小修补,<strong>0.34 以后的任何版本,包括修复版,都进不来</strong>。插件作者 8/30 就发布了修好的 0.38.3,而你这扇门 9/4 之前从没开过。这不是 bug,是语义化版本的规则——但它的后果是:<strong>宿主大升级之后,被 <code>^0.x</code> 钉住的插件要靠你手动推门。</strong></p>
+
+<h2>3. 完整时间线:每一步都有物证</h2>
+<p>这是本课的主干。注意「谁在场、谁不在场」——排查这类问题的方法就是列嫌疑名单、逐个查不在场证明(和第 5 课、LR-0002 的「相关 ≠ 因果」一脉相承)。</p>
+<table>
+  <tr><th>时刻</th><th>谁动了</th><th>发生了什么</th><th>物证(你机器上可复查)</th></tr>
+  <tr><td>8/13 20:57</td><td>宿主</td><td>clone 仓库,之后 <strong>16 天没动过</strong>——这期间 <code>pnpm dsh web</code> 跑的一直是 8/13 的旧架构</td><td><code>git reflog --date=iso</code>:clone 之后直接跳到 8/29 的 pull</td></tr>
+  <tr><td>8/27 14:54</td><td>插件</td><td>装 dsh-context 0.33.1。在旧宿主上<strong>工作正常</strong>——它照旧产出含 undefined 的值,但没人校验、也没人往创建广播里塞</td><td>plugin-console 备案 installDate;投影缓存里有 8/27–8/29 的 contextTimeline 行</td></tr>
+  <tr><td>8/27–8/29</td><td>你</td><td>多次成功新建会话(含 8/29 22:28 那次,投影已折算)——<strong>「装好时还能用」是可证的事实,不是记忆错误</strong></td><td>session_projcache.json:5 个会话带 contextTimeline 行,全部成功创建</td></tr>
+  <tr><td><strong>8/29 23:20:08</strong></td><td><strong>宿主</strong></td><td><strong>git pull --ff-only 快进 16 天</strong>:Session Controller、创建广播内嵌投影、无损 JSON 校验,一次全到岗。A∧B∧C 从此刻成立</td><td><code>git reflog</code> 精确到秒;8/13 的树里 session-controller 目录根本不存在</td></tr>
+  <tr><td><strong>8/29 23:29</strong></td><td>系统</td><td><strong>bug 出生</strong>:pull 后 9 分钟,第一次新建会话(fa175ecb)即失败——回滚成 header-only 孤儿,没挂到工作区、没进缓存</td><td>解压该会话日志只见 header;workspace.json 与 projcache 里都查无此 id——与 9/4 的失败尸体指纹完全一致</td></tr>
+  <tr><td>8/30–9/3</td><td>插件作者</td><td>上游连发修复版(0.38.3 起改条件展开,不再写 undefined 字段)——生态在追赶宿主的新契约</td><td><code>npm view dsh-context time</code> 的发布时间戳</td></tr>
+  <tr><td>8/30–9/3</td><td>你</td><td>没点过「新建对话」,只开旧会话(不经过出事代码)→ 炸弹在脚下但没踩</td><td>六天里没有任何新会话事件;palette 存储有 8/31 的写入证明 web 开过</td></tr>
+  <tr><td>9/4 22:36 起</td><td>你</td><td>改 profile、重启、试图打开新建的 dsh-diary 工作区 → 每次必炸 → 22:46–54 留下十几个孤儿 → 求助 → 修复</td><td>孤儿目录时间戳;升级 0.41.3 后 create 返回 ok(已在隔离副本实测)</td></tr>
+</table>
+<p>你最初怀疑的三件事,不在场证明如下:改 <code>package.json</code>/<code>cordis.patch.yml</code>——与 8/30 备份逐字节比对,唯一差异是禁用 skills-deck,与链条任何一环无关;palette——不监听 <code>api-session/added</code>,其存储文件干净;<code>mv-agent</code> 等其他插件——无一人碰这条事件。<strong>真凶组合里没有「你昨晚做的事」,只有「你六天前做的一次 pull」和「你七天前装的一个插件」。</strong></p>
+
+<h2>4. 回答你的两个疑问</h2>
+<p><strong>「1.3k 星的好插件怎么会有恶性 bug?」</strong>——因为它当时没有 bug。它写的 <code>model: undefined</code> 对旧宿主完全无害,连它自己的数据校验(zod schema)都把这些字段声明成 optional,说明作者认为「没值」是合法状态。恶性不在任何单方,而在<strong>宿主收紧契约的速度快于生态跟进的速度</strong>时,中间必然存在一个「新旧配对必炸」的窗口期(8/28 宿主发版 → 8/30 插件修复,窗口约两天)。你恰好被 <code>^0.33.1</code> 钉在了窗口里,而且六天没踩雷所以不知道。这不是插件质量差,是<strong>契约迁移</strong>——每个生态收紧规范时都会发生的事。</p>
+<p><strong>「触发原因只有它吗?」</strong>——直接原因(写入 undefined 的那只手)是它;但<strong>引爆开关是 8/29 的 pull</strong>,它一次带进了条件 B 和 C。三个条件里你手里握着两个可控的:pull 之前,一切平安;升级插件之后,一切恢复。说「都怪插件」和上次说「都怪 LM Studio」(LR-0002)是同一种归因错误——<strong>停在离现象最近的那个人身上。</strong></p>
+
+<h2>5. 验收清单 +2(接第 5 课的清单)</h2>
+<ul>
+  <li><strong>宿主大升级(几十个 commit 以上的 pull)之后,必做一次「新建会话」冒烟</strong>——只打开旧会话不算,那条路不经过创建链路。本次事故潜伏六天,就是缺了这一步。</li>
+  <li><strong>宿主跨版本升级后,主动检查被 <code>^0.x</code> 钉住的第三方插件有没有新版本</strong>(<code>npm view &lt;pkg&gt; time</code> 十秒钟的事)——修复版不会自己走进来。</li>
+  <li>(给 dsh 维护者视角的你)两个可选加固:校验前移到投影写入时(点名插件,而不是炸整个创建);UI 的静默 catch 至少留一条 console.warn。<strong>失败必须可见</strong>,无论对插件作者还是对用户。</li>
+</ul>
+
+<h2>检索练习</h2>
+
+<div class="quiz" data-quiz>
+  <p class="q">① 为什么说 bug 出生在 8/29 23:29,而不是装插件的 8/27?</p>
+  <button data-correct="false">因为插件要运行七天才会坏</button>
+  <button data-correct="true">因为引爆的另两个条件 23:20 才随 pull 到岗</button>
+  <button data-correct="false">因为 8/27 的会话没有用空白对话测试</button>
+  <p class="explain">8/27–8/29 有五次成功创建的物证(投影缓存)。23:20 的 pull 带进「广播内嵌投影」与「JSON 校验」,23:29 第一次创建即留下孤儿尸体——三个条件首次同时为真。</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">② 「JSON 里没有 undefined」在校验时意味着什么?</p>
+  <button data-correct="false">undefined 会被自动转成 null 再传输</button>
+  <button data-correct="true">字段过桥即消失,不再是无损数据</button>
+  <button data-correct="false">undefined 是合法值,只是浏览器不显示</button>
+  <p class="explain">JSON.stringify 会直接丢弃值为 undefined 的字段,往返之后数据缺了一块——所以「无损 JSON」校验当场拒收。转 null 是「有损的补救」,校验要拦的正是悄悄的丢失。</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">③ 插件作者 8/30 就发布了修复,为什么你 9/4 还在踩坑?</p>
+  <button data-correct="false">npm 的缓存把新版本挡在了门外</button>
+  <button data-correct="true">^0.33.1 这扇门放不进 0.34 以后的版本</button>
+  <button data-correct="false">修复版要先等宿主官方审核上架</button>
+  <p class="explain">semver 对 0.x 的 caret 只在同一 0.33.x 内浮动;0.38.3 属于「不兼容升级」,必须手动改依赖。没有缓存或审核问题,是版本规则本身。</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">④ 宿主大升级后的冒烟测试,哪一种才算踩到了这次事故的路径?</p>
+  <button data-correct="false">打开一个旧会话继续聊上几轮</button>
+  <button data-correct="true">新建一个空白会话并进入工作区</button>
+  <button data-correct="false">重启一次 web 界面看能不能打开</button>
+  <p class="explain">出事的代码只在「创建」链路上:创建 → 广播 → 校验 → 回滚。打开旧会话、重启界面都不经过它——这正是事故能潜伏六天的原因。</p>
+</div>
+
+<h2>动手验证(10 分钟)</h2>
+<ol>
+  <li><strong>亲眼看 pull 的时刻</strong>:在仓库跑 <code>git reflog --date=iso | head -8</code>,找到 <code>2026-08-29 23:20:08</code> 的 <code>pull --ff-only</code>。再跑 <code>git log 47f943859b --oneline -1</code> 确认 clone 起点,体会「16 天的架构差距一次到位」。</li>
+  <li><strong>对比两具尸体</strong>:用 Node 解压 8/29 的 fa175ecb 和 9/4 的任一孤儿(会话目录里的 <code>session.jsonl.zstd</code>,Node 24 的 <code>node:zlib</code> 有 <code>zstdDecompressSync</code>)——两者都只剩一行 header。这就是「回滚」的物理形状。</li>
+  <li><strong>看修复的样子</strong>:打开 <code>~/.dsh/profiles/web/node_modules/dsh-context/lib/index.js</code> 搜 <code>buildTimelineView</code>,看 0.41.3 怎么用条件展开(<code>...state.model !== void 0 ? { model: state.model } : {}</code>)做到「没值就不写字段」;再跑 <code>npm view dsh-context time --json | tail -12</code> 数一数修复窗口有几天。</li>
+</ol>
+
+<h2>深入阅读</h2>
+<p>主推(一手来源):<code>../packages/api/remotes/src/index.ts</code>(<code>assertJsonArgs</code>——「无损 JSON」契约的执法现场)、<code>../packages/core/session/src/index.ts</code>(<code>announce()</code> 附近的注释,白纸黑字写着「抛错的 session/created 监听器会回滚挂载」)、<code>../packages/api/session-controller/src/list.ts</code>(<code>summaryFor</code>——投影值如何进入广播)。外部规范:MDN 对 <code>JSON.stringify</code> 处理 <code>undefined</code> 属性值的说明;semver.org 关于 caret 与 0.x 的条款。上一课:<a href="0009-footer-actions-and-slots-registry.html">0009 · footer 动作区与 slots 注册表</a>;同系列事故课:<a href="0005-an-unhandled-promise-killed-the-process.html">0005 · 一张没兑付的欠条,杀死了整个程序</a>(LR-0002 的「相关 ≠ 因果」在这里第二次应验)。</p>
+
+<blockquote>有不清楚的地方,随时问你的老师(也就是我)。值得追问的方向:为什么宿主选择「回滚整个创建」而不是「跳过这条广播」?两个设计各自付出什么代价?——这是下一层「fail-loud vs fail-soft」的好话题。</blockquote>
+
+<footer>教学文件,不入 git。上一课:<a href="0009-footer-actions-and-slots-registry.html">0009 · footer 动作区与 slots 注册表</a>。相关记录:learning-records/0006(契约配对)、0002(相关 ≠ 因果)。</footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

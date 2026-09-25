@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>速查表 · Web UI 呈现方式(Surfaces)术语表</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Reference · 打印友好</div>
+  <h1>Web UI 呈现方式术语表</h1>
+  <div class="meta">Lesson <a href="../lessons/0008-ui-surface-taxonomy.html">0008</a>的压缩版。忘了才翻,不背。每个术语附「技术指纹」(DOM/CSS/ARIA 线索)与「你机器上的标本」。</div>
+</header>
+
+<h2>先记一条主轴,再看表</h2>
+<p>所有 surface 的第一分叉只有一个问题:<strong>新内容和宿主页面是不是同一个 document?</strong></p>
+<ul>
+  <li><strong>同 document(浮层系)</strong> — 内容叠在原页面上方或嵌进原页面。共享 JS 上下文、状态、路由,通信是函数调用。overlay / modal / popover / drawer / tab 都在这边。</li>
+  <li><strong>新 browsing context</strong> — 浏览器另开一个独立页面(新标签页 / 新窗口 / iframe),与原页面互不知晓,只能靠 HTTP / postMessage 通信。</li>
+</ul>
+<p>第二分叉(浮层系内部):<strong>打断不打断</strong>。打断底层交互的叫 modal(模态);不打断的叫 modeless / popover / drawer 等。第三档是<strong>生命周期</strong>:临时开关(modal)、常驻切换(tab)、并行同开(独立页面)。</p>
+
+<h2>家族全景</h2>
+
+<h3>同 document · 浮层系</h3>
+<table>
+  <tr><th>术语</th><th>一句话</th><th>技术指纹</th><th>何时用</th></tr>
+  <tr>
+    <td><strong>overlay</strong><br>覆盖层</td>
+    <td>盖在页面内容之上的一层,统称。本身不规定交互。</td>
+    <td><code>position:fixed; inset:0</code> + 高 <code>z-index</code></td>
+    <td>任何"盖上去"的形态的基底;full-screen overlay 用于临时全屏任务视图。</td>
+  </tr>
+  <tr>
+    <td><strong>modal dialog</strong><br>模态对话框</td>
+    <td>打断式:背景变 inert(不可交互),焦点被圈住,必须处理完才能走。</td>
+    <td><code>role="dialog" aria-modal="true"</code> + 焦点陷阱 + backdrop(遮罩/scrim)。原生 <code>&lt;dialog&gt;.showModal()</code></td>
+    <td>必须让用户停下注意的事(确认危险操作、填一段完整输入)。克制使用——打断是税。</td>
+  </tr>
+  <tr>
+    <td><strong>command palette</strong><br>命令面板</td>
+    <td>modal 的子类:搜索驱动的快速命令/跳转面板。</td>
+    <td>modal 指纹 + 搜索框自动聚焦 + 键盘导航(⌘K)</td>
+    <td>功能多而深、不想做导航结构时的统一入口。</td>
+  </tr>
+  <tr>
+    <td><strong>modeless dialog</strong><br>非模态对话框</td>
+    <td>对话框但不打断:用户可以继续操作背景内容(经典如"查找替换")。</td>
+    <td><code>&lt;dialog&gt;.show()</code>(非 showModal)</td>
+    <td>工具型小窗,开着的同时要反复参考底下的内容。</td>
+  </tr>
+  <tr>
+    <td><strong>drawer / side panel</strong><br>抽屉/侧面板</td>
+    <td>从屏幕边缘滑入的面板,可模态可不模态。移动端从底部来的叫 <strong>bottom sheet</strong>。</td>
+    <td>停靠一侧 + transform 滑入动画</td>
+    <td>中等体量的辅助信息/设置,想半屏对照着看。</td>
+  </tr>
+  <tr>
+    <td><strong>popover</strong><br>弹出层</td>
+    <td>锚定在触发元素旁的小浮层,点外部即关。</td>
+    <td><code>popover</code> 属性 / CSS Anchor Positioning;<code>popovertarget</code></td>
+    <td>轻量选择、补充说明,与某个按钮/字段强相关。</td>
+  </tr>
+  <tr>
+    <td><strong>tooltip</strong></td>
+    <td>hover/聚焦时出现的一两句提示,不可交互。</td>
+    <td>CSS <code>:hover</code> 或 popover 变体</td>
+    <td>名词解释、快捷键提示。</td>
+  </tr>
+  <tr>
+    <td><strong>toast / snackbar</strong></td>
+    <td>自动消失的通知条,不打断。</td>
+    <td><code>role="status"</code> / <code>aria-live</code></td>
+    <td>"已保存""已复制"这类结果反馈。</td>
+  </tr>
+  <tr>
+    <td><strong>lightbox</strong></td>
+    <td>图片/媒体的居中放大查看层。</td>
+    <td>modal 指纹 + 点击背景关闭</td>
+    <td>预览图片、 diff 大图。</td>
+  </tr>
+</table>
+
+<h3>同 document · 非浮层系(原地扩展/切换)</h3>
+<table>
+  <tr><th>术语</th><th>一句话</th><th>技术指纹</th><th>何时用</th></tr>
+  <tr>
+    <td><strong>tab panel</strong><br>标签页面板</td>
+    <td>同一位置的一组平行视图,点标签切换,常驻。</td>
+    <td><code>role="tablist" / tab / tabpanel</code> + 方向键导航(APG Tabs Pattern)</td>
+    <td>内容<strong>归属</strong>于某个已有容器(如"这个 session 的另一种视角")。</td>
+  </tr>
+  <tr>
+    <td><strong>inline disclosure</strong><br>就地展开</td>
+    <td>不浮起,原地展开/收起一段内容(accordion 折叠组)。</td>
+    <td><code>&lt;details&gt;/&lt;summary&gt;</code></td>
+    <td>渐进披露详情,保持页面结构不跳。</td>
+  </tr>
+  <tr>
+    <td><strong>route view(SPA)</strong><br>路由视图</td>
+    <td>单页应用里路由切换主内容区,整个 document 不重载。</td>
+    <td>history API / 前端路由(React Router 等),URL 可分享</td>
+    <td>应用主页面间的导航,需要可收藏/可前进后退的 URL。</td>
+  </tr>
+</table>
+
+<h3>新 browsing context</h3>
+<table>
+  <tr><th>术语</th><th>一句话</th><th>技术指纹</th><th>何时用</th></tr>
+  <tr>
+    <td><strong>standalone page in new tab</strong><br>新标签页独立页</td>
+    <td>一个完整独立 URL 的页面,从入口链接在新标签页打开。</td>
+    <td><code>&lt;a target="_blank" rel="noopener"&gt;</code> 指向独立路由</td>
+    <td>体量大、生命周期独立、<strong>要与主应用并行使用</strong>(一边聊一边写)。</td>
+  </tr>
+  <tr>
+    <td><strong>popup window</strong><br>弹窗(狭义)</td>
+    <td><code>window.open()</code> 开的独立小窗口。</td>
+    <td>JS 调用返回 <code>window</code> 引用,可跨窗口通信</td>
+    <td>OAuth 登录回调等需要独立窗口的场景;日常 UI 少用(易被拦截)。</td>
+  </tr>
+  <tr>
+    <td><strong>iframe embed</strong></td>
+    <td>页面内嵌另一个 browsing context 的框。</td>
+    <td><code>&lt;iframe&gt;</code></td>
+    <td>嵌入第三方页面/隔离样式脚本;沙箱安全边界。</td>
+  </tr>
+</table>
+
+<h2>四个高频混淆对</h2>
+<ol>
+  <li><strong>overlay vs modal</strong>:overlay 是<strong>实现</strong>词(一层盖上去的视觉层),modal 是<strong>行为</strong>词(打断 + 圈焦点)。一个 modal 视觉上 = backdrop(遮罩) + dialog surface;判断是不是 modal 永远看行为,不看 z-index 高低。</li>
+  <li><strong>dialog vs modal</strong>:dialog 是容器概念;modal 形容"阻断模式"。所以存在 modeless dialog。原生 <code>&lt;dialog&gt;</code> 双证件:<code>show()</code> = modeless,<code>showModal()</code> = modal。</li>
+  <li><strong>popup 的语义漂移</strong>:历史上 popup = window.open 的浏览器弹窗(广告时代);如今口语里常指页面内 popover。正式语境写 popover 或 modal,别写 popup。</li>
+  <li><strong>两种 tab</strong>:页面内 tab(tablist/tabpanel,ARIA Tabs Pattern)≠ browser tab(浏览器标签页)。dsh 的 <code>conversation.view</code> 是前者;diary 的 <code>target="_blank"</code> 开的是后者——中文都叫"标签页",层级完全不同。</li>
+</ol>
+
+<h2>dsh 插件挂载点对照</h2>
+<table>
+  <tr><th>宿主扩展点</th><th>得到的 surface</th><th>你机器上的标本</th></tr>
+  <tr><td><code>conversation.view</code> slot</td><td>tab panel(会话页 view tab)</td><td>usage-board 单 session 用量;<code>dsh-context</code> 的 Context tab</td></tr>
+  <tr><td><code>shell.overlay</code> slot</td><td>full-screen overlay</td><td>usage-board 用量大盘 GlobalBoard</td></tr>
+  <tr><td><code>conversation.input.overlay</code> slot</td><td>modal</td><td>dsh-context 的 <code>/context</code> 弹窗</td></tr>
+  <tr><td><code>sidebar.footer.action</code> slot</td><td>入口按钮(触发器,不是 surface 本体)</td><td>所有插件共用的侧栏入口</td></tr>
+  <tr><td><code>ctx.webServer.register</code> + <code>&lt;a target="_blank"&gt;</code></td><td>standalone page in new tab</td><td>diary / simtrade / zqtrade / mytool 看板</td></tr>
+  <tr><td>自建 portal 到 <code>document.body</code>(非官方逃生门)</td><td>overlay / modal</td><td>palette 的 ⌘K 面板(command palette)</td></tr>
+</table>
+
+<h2>权威出处</h2>
+<ul>
+  <li><a href="https://www.w3.org/WAI/ARIA/apg/patterns/">WAI-ARIA APG · Pattern 目录</a> — 全部 widget 模式的权威清单(dialog/tabs/disclosure…各一份)。</li>
+  <li><a href="https://www.nngroup.com/articles/modal-nonmodal-dialog/">NN/g · Modal &amp; Nonmodal Dialogs</a> — 什么时候(不)该打断。</li>
+  <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog">MDN · <code>&lt;dialog&gt;</code></a> / <a href="https://developer.mozilla.org/en-US/docs/Web/API/Popover_API">Popover API</a> / <a href="https://developer.mozilla.org/en-US/docs/Web/API/Window/open">window.open</a></li>
+</ul>
+
+<footer>教学文件,不入 git。配套课件:<a href="../lessons/0008-ui-surface-taxonomy.html">Lesson 0008 · UI 出场方式</a>。</footer>
+
+</body>
+</html>

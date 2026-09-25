@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 4 课 · 整合契约怎么 drill:把 prose 变成可测契约</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0004 · mytool 实战</div>
+  <h1>整合契约怎么 drill:把 prose 变成可测契约</h1>
+  <div class="meta">目标:15 分钟后,你拿到 AI 写的「智能整合/智能摘要/智能清洗」类功能,能走完一套流程:把 prose 承诺分类成硬保证与软判断,硬的交给测试,软的交给可重复的评测——而不是读一遍输出说「感觉不错」。</div>
+</header>
+
+<blockquote>
+上一课解剖了插件的<strong>结构</strong>。但 mytool 真正的难点不在结构:「整合时要去重、总结、体系化,保留矛盾」——这样的 SKILL.md prose 写了半年,<strong>整合质量从未真实发生</strong>(spec 承认 US5 未实现,suggest_links 承诺直接蒸发)。读输出「感觉不错」不是验收。本课讲的那套流程,产出是 <a href="../../projects/mytool/docs/specs/0002-integration-contract.md">specs/0002</a>——一份把 prose drill 成契约的真实文档。
+</blockquote>
+
+<h2>1. 第一步:盘点蒸发点(每条承诺找到出处行)</h2>
+<p>drill 不是重写,是<strong>考古</strong>:把散在 spec / SKILL.md / 旧 ticket / ADR 里的每条模糊承诺挖出来,记下它现在的原文和行号。mytool 挖出 10 条悬而未决:provider/model/temperature 无记录(spec L66)、整合 prompt 是纯 prose(SKILL L100–116)、摘要无落点、防重复无阈值、矛盾无表示、多来源无规则、标签无治理、状态升格只有一句「别乱动」……</p>
+<div class="callout">验收视角:让 AI 交付「智能 X」时,先要它列出<strong>所有</strong>关于 X 的既有承诺及出处。列不全,说明它没读全;这一步本身就是对 AI 的第一次验收。</div>
+
+<h2>2. 第二步:硬软分工(整个方法的轴)</h2>
+<table>
+  <tr><th></th><th>硬保证</th><th>软判断</th></tr>
+  <tr><td>性质</td><td>确定性,机器可断言</td><td>模型质量,只能统计性评估</td></tr>
+  <tr><td>mytool 例子</td><td>id 稳定、<code>.bak</code> 必在、原子写、front-matter 合法、标签 ≤6、摘要 ≤200、JSON 契约校验、超时有界</td><td>要点保留、无逐字重复、行文连贯、矛盾不被悄悄抹平</td></tr>
+  <tr><td>归宿</td><td>单元测试(写进 CI)</td><td>评测票:固定语料 + 不变量断言</td></tr>
+  <tr><td>失败处置</td><td>修代码</td><td>改 prompt / 换模型 / 降预期</td></tr>
+</table>
+<p>分错的代价:把软的当硬的(「必须一句话总结」),测试天天红,团队学会忽略红灯;把硬的当软的(「.bak 一般会在」),坏一次就丢用户数据。<strong>判据:同一输入重跑,断言是否必然成立。</strong></p>
+
+<h2>3. 第三步:逐条裁决(现状 → 提案 → 备选)</h2>
+<p>每条悬而未决写成一行三段:现状出处(带行号)→ 提案(含默认值与理由)→ 备选。mytool 的 10 条里有 4 条标了 ⚖(影响数据格式或体验,必须人拍板),你逐条裁决:</p>
+<ol>
+  <li><strong>摘要落点</strong>:front-matter 加可选 <code>summary</code>(批准);</li>
+  <li><strong>防重复阈值</strong>:strong = score ≥ 15 或 title 关键词命中 ≥2,加「整合后复查」纪律(接受);</li>
+  <li><strong>标签上限</strong>:默认 6,超限 core 硬报错让模型自纠(选定);</li>
+  <li><strong>suggest_links 蒸发承诺</strong>:正式退役,ADR 记录(裁决)。</li>
+</ol>
+<p>注意第 4 条:<strong>退役也是裁决的一种结果</strong>。做不到的承诺留在文档里,比删掉更有害——它持续制造「文档说有」的错觉。</p>
+
+<h2>4. 第四步:可测化落点</h2>
+<ul>
+  <li><strong>输出契约显式化</strong>:模型必须返回裸 JSON,恰好六个键(含 <code>proposed_status</code>、<code>contradictions_flagged</code>);严格校验,<strong>不做容错性剥离</strong>——markdown 围栏不剥,失败硬报错让模型重试,而不是静默修复。</li>
+  <li><strong>模板进源码带版本号</strong>(<code>PROMPT_VERSION = 1</code>):改一个词就是新版本;评测结果才能按版本比较,否则「这周质量降了」永远说不清是模型漂了还是 prompt 改了。</li>
+  <li><strong>软纪律尽量下沉成数据流</strong>:「status 别乱动」不靠 prompt 自觉——落盘值由代码强制透传既有值,模型返回的只是<strong>提案</strong>,进结果不进磁盘。</li>
+  <li><strong>部署变量全进 Config</strong>:provider/model/temperature/timeoutMs/阈值,都不是代码里的魔法数。</li>
+</ul>
+
+<h2>5. 第五步:留出诚实的修正通道</h2>
+<p>契约不是碑文。实现 ticket 08 时撞上平台约束(仓外插件的自定义事件会让会话日志重载被拒),spec 0002 得了带日期的<strong>追记</strong>:记录约束、说明替代机制(标准 tool 事件承载可重建性)。好契约文档的生命体征,恰恰是这些追记——<strong>设计说的和实现做的不一致时,要的是文档化修正,不是悄悄改口</strong>。</p>
+
+<h2>检索练习</h2>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q1. 「整合后不得丢失材料里的关键要点」——硬还是软?</p>
+  <button data-correct="false">硬,写成单元测试</button>
+  <button data-correct="true">软,归评测:固定语料 + 不变量断言</button>
+  <button data-correct="false">既不硬也不软,写在 SKILL.md 里就行</button>
+  <button data-correct="false">取决于模型能力</button>
+  <div class="explain">「要点」由模型判定,同一输入重跑断言不必然成立——这是软判断的判据。归宿是评测票:断言「要点条目仍在」这类不变量,而非逐字比对。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q2. AI 提议:「模型输出带 markdown 围栏时,解析前自动剥掉再 parse,更稳。」验收者应该?</p>
+  <button data-correct="false">批准,健壮性好</button>
+  <button data-correct="true">追问:围栏说明模型没守契约,剥掉是静默容错;应硬报错让模型自纠</button>
+  <button data-correct="false">折中:剥掉并打日志</button>
+  <button data-correct="false">无所谓,实现细节</button>
+  <div class="explain">这是契约边界的经典之争。静默修复让违规输出永远不暴露,契约逐渐腐化;硬报错 + 模型重试把纠正压力放回该在的地方。mytool 的 parse 明确不剥围栏,并有测试锁定这个行为。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q3. 给整合 prompt 标 <code>PROMPT_VERSION = 1</code> 的主要理由是?</p>
+  <button data-correct="false">npm 发版需要对齐</button>
+  <button data-correct="true">评测结果按版本可比,质量变化可归因</button>
+  <button data-correct="false">让模型知道自己在第几版</button>
+  <button data-correct="false">法律追溯需要</button>
+  <div class="explain">没有版本号,「这周整合质量降了」分不清是模型漂移还是 prompt 被改。版本号是软判断可评测的前提之一。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q4. 实现时发现设计文档里的一步做不了(平台约束),哪种处置是对的?</p>
+  <button data-correct="false">按实现改文档正文,不留痕迹</button>
+  <button data-correct="true">找替代机制 + 带日期追记,写明约束与替代</button>
+  <button data-correct="false">坚持原设计,牺牲可维护性</button>
+  <button data-correct="false">删掉那条需求,当作没提过</button>
+  <div class="explain">悄悄改正文 = 丢失「为什么」;硬撑 = 债务;静默删 = 蒸发。追记保留决策史,后来者(包括未来的你)能看清约束是否已解除——解除了还能切回去。</div>
+</div>
+
+<h2>动手验证(10 分钟)</h2>
+<ol>
+  <li>打开 <a href="../../projects/mytool/docs/specs/0002-integration-contract.md">specs/0002</a>,先读「裁决记录」与「实现追记」,再回头抽查两行裁决表:每行能否在代码里指出落点(如 maxTags → <code>save.ts</code> 的报错、阈值 15 → <code>find.ts</code> 的 grade)。</li>
+  <li>跑 <code>cd ~/projects/mytool/dsh &amp;&amp; pnpm vitest run integrate</code>,读 9 条测试名——数一数它们覆盖的是硬保证还是软判断。</li>
+  <li>挑你自己项目里一句 prose 承诺(「AI 会智能合并重复项」之类),用第 2 节的判据把它切成硬/软两堆,各写一行归宿。这就是下一票(ticket 09 评测器)的开工动作。</li>
+</ol>
+
+<h2>本课收获</h2>
+<ul>
+  <li>drill 五步:盘点蒸发点 → 硬软分工 → 逐条裁决(现状/提案/备选,⚖ 交人)→ 可测化 → 诚实追记。</li>
+  <li>硬软判据:同一输入重跑,断言是否必然成立。</li>
+  <li>三个可复用决定:失败硬报错不静默容错、模板带版本号、软纪律尽量下沉成数据流。</li>
+</ul>
+
+<h2>下一课预告</h2>
+<p>软判断的归宿是评测。下一票(ticket 09)会为 mytool 建真模型评测器:固定语料、不变量断言、无 key 自动跳过——那是这套方法的收口,也是你验收「AI 写的 AI 功能」的最终武器。完成后会有对应课程。</p>
+
+<div class="callout">
+<strong>推荐精读</strong>(8 分钟):<a href="../../projects/mytool/docs/specs/0002-integration-contract.md">specs/0002 全文</a>——本课五步的完整产出物;对照 <a href="../../projects/mytool/.scratch/dsh-port/issues/07-integration-contract-drill.md">ticket 07 归档</a>看流程怎么落成 ticket。
+</div>
+
+<footer>
+  <p>dsh 架构课程 · Lesson 0004 · 2026-08-17 · <a href="0003-dissect-a-real-plugin.html">上一课</a> · <a href="../reference/dsh-plugin-architecture-map.html">参考表</a></p>
+  <p>有任何不清楚的地方——随时回来问你的 agent 老师,它读过整个仓库的源码。</p>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 8 课 · UI 的出场方式——overlay / modal / tab / 独立页面的正名与选型</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0008 · Web UI 呈现方式</div>
+  <h1>UI 的出场方式——你已无师自通四种,现在给它们正名</h1>
+  <div class="meta">目标:15 分钟。把你 6 个插件里出现的 UI 形态对应到行业标准术语;拿到一张「什么时候用哪种」的选型地图;验收 AI 写的 webUI 时能说行话、能挑形态的毛病。</div>
+</header>
+
+<blockquote>
+你的原话:「我意识到这似乎是 web 前端的几种展示页面的方式。它们的学名/术语都叫什么?还有其他种类吗?什么情况下适合用什么?」
+</blockquote>
+
+<h2>1. 先正名:你的四个观察,学名对照</h2>
+<p>这批东西行业里统称 <strong>UI surface(呈现面)</strong>,单个形态叫 <strong>UI pattern</strong>。逐条对上:</p>
+<table>
+  <tr><th>你的观察</th><th>学名</th><th>你机器上的标本</th><th>技术指纹</th></tr>
+  <tr>
+    <td>usage-board 大盘「在原页面覆盖」</td>
+    <td><strong>full-screen overlay</strong>(全屏覆盖层)</td>
+    <td>GlobalBoard,挂宿主 <code>shell.overlay</code> slot</td>
+    <td><code>position:fixed; inset:0; z-index:1000</code>(<code>globalBoardStyles.ts:37</code>)</td>
+  </tr>
+  <tr>
+    <td>palette「原页面弹窗」</td>
+    <td><strong>modal dialog</strong>,子类 <strong>command palette</strong>(命令面板)</td>
+    <td>⌘K 面板,自建 portal 到 <code>document.body</code></td>
+    <td><code>role="dialog" aria-modal</code> + 焦点陷阱 + backdrop(<code>PaletteBoard.tsx:1</code> 注释自己就写着)</td>
+  </tr>
+  <tr>
+    <td>diary/simtrade/note-kanban「弹窗打开新页面」</td>
+    <td><strong>standalone page in new tab</strong>(新标签页独立路由页)</td>
+    <td>侧栏锚点 <code>&lt;a href="/diary" target="_blank"&gt;</code>(<code>dsh-diary/src/client.js:42</code>)</td>
+    <td>宿主 <code>webServer.register</code> 吐独立 URL 的整页 HTML</td>
+  </tr>
+  <tr>
+    <td>单 session 用量 / dsh-context 的「tab」</td>
+    <td><strong>tab panel</strong>(标签页面板,ARIA Tabs Pattern)</td>
+    <td>都注册在 <code>conversation.view</code> slot(id: <code>usage</code> / <code>context</code>)</td>
+    <td><code>role="tablist"/tab/tabpanel</code>,方向键切换</td>
+  </tr>
+</table>
+
+<div class="callout"><strong>一处措辞修正</strong>:diary 那组不是「弹窗」。它不是 dsh 页面里弹出的层,而是<strong>浏览器新开的标签页</strong>,里面装一个完全独立的页面。这一字之差正好是本课最关键的分界线,见下节。</div>
+
+<h2>2. 一条主轴看懂全部家族</h2>
+<p>别背十几个名词。所有 surface 的第一分叉只有一个问题:<strong>新内容和宿主页面是不是同一个 document?</strong></p>
+<ul>
+  <li><strong>同 document(浮层系)</strong>:overlay、modal、command palette、popover、drawer、toast——全都是「盖在原页面上」或「嵌进原页面」,和宿主共享 JS 上下文、状态、样式,通信就是函数调用。你的前两个观察在这边。</li>
+  <li><strong>新 browsing context</strong>:新标签页、<code>window.open()</code> 弹窗、iframe——浏览器另开一个独立页面,与原页面互不知晓,只能走 HTTP 或 postMessage。diary 那组在这边。</li>
+</ul>
+<p>浮层系内部再分两刀:</p>
+<ul>
+  <li><strong>打断不打断</strong>:打断底层交互、圈住焦点的叫 <strong>modal</strong>(palette 的 Tab 键出不了面板);不打断的叫 modeless / popover / drawer。NN/g 的结论很干脆:modal 是<strong>打断税</strong>,只在"用户必须停下处理"时收(确认危险操作、一段完整输入),能免则免。</li>
+  <li><strong>生命周期</strong>:临时开关(modal,用完即走)、常驻切换(tab,一直都在,随时切)、<strong>并行同开</strong>(独立页面,两个窗口同时活着)。</li>
+</ul>
+<p>「并行」是独立页面独有的能力——这也是 diary/看板选它的真实理由:你想<strong>一边在 dsh 里聊,一边在旁边写日记/拖看板</strong>。这件事 overlay 和 modal 在物理上就做不到:它们只要开着,就挡着宿主。</p>
+
+<h2>3. 易混的四组词</h2>
+<ol>
+  <li><strong>overlay vs modal</strong>:overlay 是<strong>实现</strong>词(一层盖上去的视觉结构),modal 是<strong>行为</strong>词(打断 + 圈焦点)。你的两个标本恰好各占一边:GlobalBoard 是 overlay 但<strong>不</strong>算典型 modal(没有把背景变 inert);palette 是 modal(有焦点陷阱)。判据永远看行为,不看 z-index 高低。</li>
+  <li><strong>dialog vs modal</strong>:dialog 是容器概念,modal 形容"阻断模式",所以存在 <strong>modeless dialog</strong>(开着但不妨碍你操作背景,经典如编辑器的查找替换)。原生 <code>&lt;dialog&gt;</code> 元素自带双证件:<code>show()</code> = modeless,<code>showModal()</code> = modal。</li>
+  <li><strong>popup 的语义漂移</strong>:历史上 popup 专指 <code>window.open()</code> 的浏览器弹窗(被广告做坏名声的那位);如今口语常指页面内小浮层,正式名叫 <strong>popover</strong>。写文档说清楚用哪个,别用 popup 这个含糊词。</li>
+  <li><strong>两种 tab</strong>:页面内 tab(tablist/tabpanel,ARIA Tabs Pattern)≠ browser tab(浏览器标签页)。你的第 4 个观察是前者,第 3 个观察打开的是后者——中文都叫「标签页」,层级完全不同,这是你自己观察里暗埋的混淆点。</li>
+</ol>
+
+<h2>4. 家族全景(还有谁?)</h2>
+<p>你没用到但同家族的,按主轴归位——完整速查表见<a href="../reference/ui-surfaces-glossary.html">参考文档 · UI Surfaces 术语表</a>:</p>
+<ul>
+  <li>浮层系:<strong>drawer / side panel</strong>(边缘滑入的面板;dsh 细节栏本质就是它)、<strong>popover</strong>(锚定触发元素旁,点外即关)、<strong>tooltip</strong>(hover 提示)、<strong>toast</strong>(自动消失的通知条)、<strong>bottom sheet</strong>(移动端从底部滑入)、<strong>lightbox</strong>(媒体放大查看)。</li>
+  <li>非浮层系:<strong>inline disclosure / accordion</strong>(不浮起,原地展开,<code>&lt;details&gt;</code>)、<strong>route view</strong>(SPA 路由切换主内容区,URL 可分享——dsh shell 自身页面切换就是它)。</li>
+  <li>新 context:<strong>popup window</strong>(<code>window.open</code>,OAuth 回调常用)、<strong>iframe embed</strong>(页面里嵌第三方页面,样式脚本隔离)。</li>
+</ul>
+
+<h2>5. 选型:四问,按顺序</h2>
+<ol>
+  <li><strong>要并行使用吗?</strong> 用户要同时看主界面和这个内容(边聊边写/边看) → 只有<strong>新标签页独立页</strong>能做到。diary/simtrade/看板全在这一格,判断正确。</li>
+  <li><strong>内容归属于谁?</strong> 归属某个已有容器("这个 session 的另一种视角") → <strong>tab panel</strong>;锚定某个按钮/字段 → <strong>popover</strong>;辅助信息半屏对照 → <strong>drawer</strong>。usage-board 的单 session 计费挂 <code>conversation.view</code>,归属判断也对。</li>
+  <li><strong>必须打断吗?</strong> 用户不处理完不能继续(危险确认、整段必填输入) → <strong>modal</strong>;否则不要 modal。palette 例外地合理:命令面板的语义就是「唤起即专注」,搜完即走。</li>
+  <li><strong>体量与驻留</strong> 小而瞬态(toast/tooltip)→ 中而临时(popover/modal/drawer)→ 大而常驻(tab/独立页)。usage-board 大盘是全屏 overlay 而非独立页,换来的是它能直接读宿主状态、样式同源——体量到了边界,但生命周期「临时开关」是对的。</li>
+</ol>
+
+<h2>6. dsh 工程视角:主轴即通信方式</h2>
+<p>那条主轴在 dsh 里有个非常工程化的读法:<strong>同 document = 函数调用;新 browsing context = HTTP API。</strong></p>
+<ul>
+  <li>tab / overlay / modal 都活在 dsh 的 React 树里,拿 <code>sessionId</code> 靠 props 注入(SessionPanel 就是),要什么状态直接调用——但受宿主运行时约束,要带构建。</li>
+  <li>diary 的独立页和 dsh 只通过 <code>webServer.register</code> 的 <code>/diary/api/*</code> 说话。代价是两边只有 HTTP;收益是<strong>完全自由</strong>——它是零构建的 vanilla HTML,根本不进 React 树(第 7 课的样式问题在这边也简单一半)。</li>
+  <li>palette 是第三条路:slot 体系当年管不到覆盖层,它就自己 portal 到 <code>document.body</code>(<code>portal.tsx:61</code> 注释明说)。属于「非官方逃生门」——能用,但要比官方 slot 多自己操心焦点陷阱、层级和卸载。</li>
+</ul>
+
+<h2>7. 检验你的理解</h2>
+
+<div class="quiz" data-quiz>
+  <p class="q">① 你要给「正在进行的 session」加一个用量统计,用户想一边聊一边随时切过去看。选哪种 surface?</p>
+  <button data-correct="false">全屏 overlay 覆盖层</button>
+  <button data-correct="true">会话页里的 view tab</button>
+  <button data-correct="false">新标签页独立页面</button>
+  <p class="explain">归属 session、常驻、不打断聊天——三问都指向 tab(现实里 usage-board 正是这么挂 <code>conversation.view</code> 的)。overlay 会盖住聊天;独立页割裂了「这个 session 的视角」归属。</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">② palette 的 ⌘K 面板被归为 modal 而不只是 overlay,判据是哪一个?</p>
+  <button data-correct="false">它的 z-index 高过宿主</button>
+  <button data-correct="false">它覆盖了整个视口</button>
+  <button data-correct="true">它阻断底层并圈住焦点</button>
+  <p class="explain">modal 是行为词不是视觉词:背景 inert + Tab 出不去(焦点陷阱)。z-index 和全屏都只是 overlay 的实现细节——GlobalBoard 也全屏,但不算典型 modal。</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">③ diary 打开的 /diary 页面,与 dsh 主页面之间的关系是?</p>
+  <button data-correct="false">同一页面里叠了一层</button>
+  <button data-correct="false">同一页面的一个标签</button>
+  <button data-correct="true">两个独立浏览上下文</button>
+  <p class="explain">新标签页 = 新 browsing context,两个 document 互不知晓,只经 <code>/diary/api/*</code> 的 HTTP 通信。这就是「边聊边写」可行的原因,也是它敢用零构建 vanilla HTML 的原因。</p>
+</div>
+
+<h2>8. 深入阅读</h2>
+<p>主推:<a href="https://www.w3.org/WAI/ARIA/apg/patterns/">WAI-ARIA Authoring Practices Guide 的 Pattern 目录</a>——W3C 官方的 UI 模式大全,每个 pattern(dialog、tabs、disclosure…)带 ARIA 语义、键盘交互和可运行示例,是「学名」的最终出处;验收 AI 写的组件时拿它当清单。配合 <a href="https://www.nngroup.com/articles/modal-nonmodal-dialog/">NN/g 的 Modal &amp; Nonmodal Dialogs</a>(什么时候该/不该打断,选型判断的实证依据)与 <a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog">MDN 的 <code>&lt;dialog&gt;</code> 页</a>(原生双证件 show/showModal)。</p>
+
+<blockquote>有不清楚的地方,随时问你的老师(也就是我)。下一步可以做一节动手课:给 palette 之外再挑一个形态(比如 drawer 或 toast),让 AI 实现一版,你来按本课的四问验收它选的形态对不对。</blockquote>
+
+<footer>教学文件,不入 git。上一课:<a href="0007-where-does-the-style-live.html">0007 · 风格存在哪里</a>。速查:<a href="../reference/ui-surfaces-glossary.html">UI Surfaces 术语表</a>。</footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh 插件架构速查表</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  dl.glossary dt { font-weight: 700; margin-top: 0.9rem; }
+  dl.glossary dd { margin-left: 0; }
+  .layer { border: 1px solid var(--rule); border-radius: 6px; padding: 0.6rem 1rem; margin: 0.5rem 0; background: #fff; }
+  .layer .n { display: inline-block; width: 1.5rem; height: 1.5rem; line-height: 1.5rem; text-align: center; border-radius: 50%; background: var(--ink); color: var(--paper); font-size: 0.85rem; margin-right: 0.5rem; }
+</style>
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Reference · 速查表</div>
+  <h1>dsh 插件架构地图</h1>
+  <div class="meta">伴随课程使用的压缩参考：术语表、组合层叠、turn flow、关键接缝与源码入口。</div>
+</header>
+
+<h2>Cordis 五个核心概念</h2>
+<p>来源：<a href="../docs/cordis-primer.md">docs/cordis-primer.md</a>。dsh 的「一切皆插件」建立在被 vendor 进来的 Cordis DI 框架上。</p>
+<dl class="glossary">
+  <dt>plugin ≈ Service</dt>
+  <dd>插件不是一段被动的钩子代码，而是一个<strong>服务</strong>：挂载后把自己的能力注册进 context,别的插件按名字取用。例：<code>super(ctx, 'agentLoop')</code> 注册了 <code>ctx.agentLoop</code>。</dd>
+  <dt>context = service repository</dt>
+  <dd><code>ctx</code> 是服务仓库,每个插件收到自己的 ctx 视图;服务出现/消失时依赖它的插件会被启动/暂停。</dd>
+  <dt>inject 声明依赖</dt>
+  <dd><code>static inject = ['llm', 'tools', ...]</code>:依赖的服务全部就位前,插件的 fiber 一直 <strong>pend</strong>(挂起等待),不会启动。</dd>
+  <dt>typed events</dt>
+  <dd>插件间通信:<code>emit</code>(单向)、<code>waterfall</code>(链式改写,<strong>必须调 <code>next()</code></strong>)、<code>parallel</code>/<code>serial</code>。通过 declaration merging 扩展事件表。</dd>
+  <dt>registrations are effects</dt>
+  <dd>一切注册都走 <code>ctx.effect()</code> / <code>ctx.on()</code>,返回 disposer——插件卸载时注册自动撤销,系统始终可逆。</dd>
+</dl>
+
+<h2>启动组合层叠(自下而上)</h2>
+<p>来源:<a href="../docs/architecture.md">docs/architecture.md</a> 与 <a href="../apps/cli/src/profile-boot.ts">apps/cli/src/profile-boot.ts</a>。关键事实：<strong>root 配置是一个空列表</strong>——「dsh 产品」不存在于代码里,只存在于组合结果里。</p>
+<div class="layer"><span class="n">0</span><strong>root entry list</strong> — 空。没有任何内置插件。</div>
+<div class="layer"><span class="n">1</span><strong>bundle patch layers</strong> — 按 <code>dsh.profile.bundles</code> 顺序应用,如 <code>dsh-base</code> → <code>dsh-headless</code>(<a href="../packages/bundle/base/cordis.patch.yml">base/cordis.patch.yml</a> 有全部行)。</div>
+<div class="layer"><span class="n">2</span><strong>profile patch</strong> — <code>$DSH_HOME/profiles/&lt;name&gt;/cordis.patch.yml</code>,热重载。</div>
+<div class="layer"><span class="n">3</span><strong>home patch</strong> — <code>$DSH_HOME/cordis.patch.yml</code>,用户级。</div>
+<div class="layer"><span class="n">4</span><strong><code>--patch</code> overlays</strong> — 一次性命令行覆盖,最高优先级。</div>
+<p>patch 行可写 <code>disabled: !!js &lt;表达式&gt;</code> 来按条件拔掉任何插件(包括 agent-loop)。</p>
+
+<h2>Patch 行语法</h2>
+<p>patch 是一个 YAML 文件,只做三种动作。真实样本:<a href="../packages/bundle/headless/cordis.patch.yml">dsh-headless 的 patch</a>(改配置 + 禁用 + 追加)与 <a href="../examples/web-schedule/cordis.yml">examples/web-schedule/cordis.yml</a>(纯追加的用户 overlay)。</p>
+<table>
+  <tr><th>动作</th><th>写法</th><th>含义</th></tr>
+  <tr><td>改配置</td><td><code>- id: &lt;行id&gt;</code> + <code>config:</code></td><td>按 id 定位已存在的行,<strong>整体替换</strong>其 config(不深合并)</td></tr>
+  <tr><td>禁用</td><td><code>- id: &lt;行id&gt;</code> + <code>disabled: true</code></td><td>从组合中划掉该插件;可写 <code>disabled: !!js &lt;表达式&gt;</code> 按平台/环境条件禁用</td></tr>
+  <tr><td>追加</td><td><code>- insert:</code> + 新行列表</td><td>插入新插件行,每行含 <code>id</code>(后续 patch 的定位键)、<code>name</code>(npm 包名)、可选 <code>config</code>/<code>inject</code></td></tr>
+</table>
+<p>规则:同一 id 后写的层赢;行顺序本身无加载语义(激活由服务可用性驱动);<code>config</code> 与 <code>disabled</code> 的值可用 <code>!!js</code> 表达式读环境变量、<code>process.platform</code>、甚至 <code>ctx.&lt;service&gt;</code>。base bundle 就是一次性对空 root 的大 <code>insert</code>。</p>
+
+<h2>外部插件装载路径(仓外代码怎么进组合)</h2>
+<table>
+  <tr><th>路径</th><th>写法</th><th>适合</th></tr>
+  <tr><td>patch 行绝对路径</td><td><code>name: /abs/path/to/plugin-dir</code></td><td>开发期:tsx 直载 TS 源码,免 build,改完即生效</td></tr>
+  <tr><td><code>dsh plugin add</code></td><td>本地路径装进 profile</td><td>日常自用:进 <code>$DSH_HOME</code>,随 profile 启停</td></tr>
+  <tr><td>npm 包名</td><td><code>name: '@deepseek-ai/dsh-&lt;pkg&gt;'</code></td><td>正式分发:走 node_modules 解析</td></tr>
+</table>
+<p>仓外插件里 <code>import '@deepseek-ai/dsh-&lt;pkg&gt;'</code> 这类裸包名要能解析到 harness 源码树,靠插件包 node_modules 里的 <code>link:</code> 依赖指向 harness 包目录——同一 realpath 同一模块实例,与仓内共享服务注册表,无版本漂移。<strong>边界提醒</strong>:仓外插件不要发自定义 session 事件——事件类型不在持久化重载的白名单里,落盘会让会话日志重载被拒;可重建性用标准 tool 事件(参数/结果)承载。</p>
+
+<h2>Turn flow(agent-loop 的一次循环)</h2>
+<p>来源:<a href="../packages/core/agent-loop/src/agent.ts">packages/core/agent-loop/src/agent.ts</a>(<code>ReactLoopAgent</code>)。</p>
+<pre><code>wakeDriver → kick()  while (await this.turn()) {}
+  turn()        记 turn/start
+    preStep()   认领输入, ctx.systemPrompt.assemble 组装 prompt
+    step()      ── 内层循环 ──
+      buildRequest()   agent/request waterfall(插件可改写 provider/model)
+      llm.stream()     流式返回 → assistant/message
+      有 tool-call?    无 → turn completed;有 ↓
+      executeToolCalls()  有界并行池、独占屏障、按模型顺序回填
+    step/end → turn 停止条件判断 → turn/end</code></pre>
+
+<h2>关键接缝(seam)</h2>
+<table>
+  <tr><th>接缝</th><th>接口位置</th><th>默认实现</th><th>替换方式</th></tr>
+  <tr><td>Agent 工厂</td><td><code>AgentFactory</code>(<a href="../packages/core/agent/src/index.ts">packages/core/agent</a>:178)</td><td><code>dsh-agent-loop</code></td><td>自写插件实现接口并 <code>ctx.agents.setFactory(this)</code></td></tr>
+  <tr><td>LLM provider</td><td><code>ctx.llm</code> 上的 adapter</td><td><code>dsh-llm-deepseek</code></td><td>换 patch 行为 <code>dsh-llm-pi-ai</code> 等</td></tr>
+  <tr><td>Tool</td><td><code>ctx.tools</code> 注册</td><td>bash/fs/todo/subagent…</td><td>见 <a href="../docs/cookbook/adding-a-tool.md">cookbook/adding-a-tool.md</a></td></tr>
+  <tr><td>Shell / FS / subprocess 后端</td><td>各 capability 的 Provider</td><td>local 实现</td><td>Provider/Consumer 分离,换 provider 即换后端</td></tr>
+</table>
+
+<h2>三方分工(bundle / leaf / app)</h2>
+<p>来源:<a href="../packages/examples/agent-spine-demo">packages/examples/agent-spine-demo</a> README。</p>
+<ul>
+  <li><strong>bundle(spine)</strong>:agent 需要的共享插件集——Timer、LlmRuntime、SessionStore、SystemPrompt、ToolRuntime、AgentRegistry,最后挂 <code>ctx.plugin(AgentLoop, …)</code>。</li>
+  <li><strong>leaf</strong>(如 <a href="../examples/headless-agent/cordis.yml">examples/headless-agent/cordis.yml</a>):声明后端——LLM adapter、bash 执行器、持久化、要哪些 tool。</li>
+  <li><strong>app</strong>:入口程序(CLI / ACP / JSON-RPC)。</li>
+</ul>
+
+<h2>「拔掉 agent-loop」的失败时间线</h2>
+<ol>
+  <li>启动、加载其余插件:<strong>一切正常</strong>。inject 驱动的服务没出现只会让依赖者 pend。</li>
+  <li>没有人调 <code>ctx.agents.setFactory()</code>,工厂槽位为空。</li>
+  <li>直到有入口调 <code>agents.create(…)</code> → 抛错 <code>"no agent factory registered (load an agent-loop plugin)"</code>(<a href="../packages/core/agent/src/index.ts">packages/core/agent/src/index.ts</a>:392)。</li>
+</ol>
+<p>结论：失败是<strong>惰性的、按需的</strong>,而且错误信息直接告诉你该装回什么。</p>
+
+<footer>
+  <p>dsh 架构课程 · 参考文档 · 生成于 2026-08-15。有疑问随时问你的 agent 老师。</p>
+</footer>
+
+</body>
+</html>

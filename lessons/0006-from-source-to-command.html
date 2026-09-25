@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 6 课 · 从源码到命令:你的 dsh 为什么停在 0.1.0-rc.5</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0006 · 真实事故复盘(工具链版)</div>
+  <h1>从源码到命令:你的 dsh 为什么停在 0.1.0-rc.5</h1>
+  <div class="meta">目标:15 分钟后,你能把「源码 → 能敲的命令」画成一条<strong>四层管线</strong>;能解释为什么 git clone 不自带 dsh 命令、npm 安装却"自带";每次追更后,知道用哪条命令验收哪一层——以及哪一层<strong>永远不会自己跟上</strong>。</div>
+</header>
+
+<blockquote>
+继续用你的真实事故教学。2026-08-29:GitHub 显示新版本,而 <code>dsh --version</code> 依旧是 0.1.0-rc.5。调查发现这是<strong>两处互相独立的错位</strong>叠在一起:仓库的 pull 其实没成功,而全局命令是另一份冻结拷贝。你修插件是作者,管自己机器是运维——这节课把运维这半边补上。
+</blockquote>
+
+<h2>1. 事故还原:两处独立错位</h2>
+<p>当时的三个事实,先摆出来:</p>
+<ul>
+  <li><strong>仓库层</strong>:本地 HEAD 停在 0.1.0-rc.5 的提交上,<code>git fetch</code> 后比对——<strong>落后 origin/master 1933 个提交</strong>。你"执行过 pull",但本地有两个被修改的文件,跨 1933 个提交的合并碰到它们会被 git <strong>拒绝执行</strong>;拒绝信息只打印在当时那屏输出里,没看到就等于没发生。</li>
+  <li><strong>命令层</strong>:全局 <code>dsh</code> 是 8 月 22 日你手动打包后 <code>pnpm add -g</code> 装进去的。安装的是<strong>当时的完整拷贝</strong>——之后仓库怎么变,都与它无关。</li>
+  <li><strong>发布节奏</strong>:GitHub master 已到 0.1.2-alpha.1,而 npm 上最新只到 0.1.1-rc.2——<strong>master 领先 npm 是常态</strong>,不是异常。</li>
+</ul>
+<p>修复动作(当天已完成):丢弃脏文件 → pull(快进 1933 提交)→ install + clean + build → 删掉冻结拷贝,全局命令改为<strong>指向</strong>仓库构建产物。要理解这套修复为什么长这样,需要一个模型。</p>
+
+<h2>2. 名词卡:命令 = PATH 上的一个可执行文件</h2>
+<p>先破除最大的神秘感。你在任何目录敲 <code>dsh</code> 回车,shell 做的事毫无魔法:</p>
+<p><strong>拿环境变量 <code>PATH</code>(一串用冒号分隔的目录),按顺序逐个找名为 <code>dsh</code> 的可执行文件,找到第一个就运行它。</strong>(机制见 <a href="https://en.wikipedia.org/wiki/PATH_(variable)">PATH (variable)</a>)</p>
+<p>所以"注册一个命令"翻译成机械动作就是:<strong>把一个可执行文件,放进 PATH 上的某个目录</strong>。仅此而已。证据就在你机器上,亲手看:</p>
+<pre><code>$ which dsh
+/Users/zhm20001/Library/pnpm/bin/dsh        ← PATH 目录之一
+$ cat $(which dsh)
+#!/bin/sh
+exec node /Users/zhm20001/deepseek-harness/apps/cli/lib/bin.js "$@"
+                                            ← 整个"命令"就 3 行脚本</code></pre>
+<p>没有注册表,没有系统数据库,没有后台服务。<code>~/Library/pnpm/bin</code> 恰好在你的 PATH 里,里面躺着谁,谁就是命令。</p>
+
+<h2>3. 四层管线:源码如何变成命令</h2>
+<p>把「clone 下来的源码」变成「任何目录能敲的命令」,中间隔着一条<strong>四层管线</strong>,每层有自己的产物、自己的目录、<strong>自己的更新命令</strong>:</p>
+<table>
+  <tr><th>层</th><th>产物</th><th>落在哪</th><th>谁/什么命令负责</th></tr>
+  <tr><td>① 源码</td><td>git 工作区(tracked 文件)</td><td>你的 clone 目录</td><td><code>git clone</code> / <code>git pull</code></td></tr>
+  <tr><td>② 依赖</td><td>node_modules(第三方包)</td><td>clone 内,不进 git</td><td><code>pnpm install</code></td></tr>
+  <tr><td>③ 构建产物</td><td>lib/(编译出的 JS)</td><td>clone 内,不进 git</td><td><code>pnpm run build</code></td></tr>
+  <tr><td>④ 命令</td><td>一个可执行文件</td><td>PATH 上某目录</td><td>"注册"(见第 4 节)</td></tr>
+</table>
+<p>三个推论,每个都能解释你这次事故的一面:</p>
+<ul>
+  <li><strong>层与层不联动</strong>:更新第①层不会碰②③④。pull 完不 install/build,跑的还是旧产物;build 完不更新第④层的指向,命令 behavior 不变。</li>
+  <li><strong>git 只认识第①层</strong>:clone/pull 只搬运 git 追踪的文件。②③ 层的目录都在 <code>.gitignore</code> 里,④ 层更是 git 世界观之外的概念。</li>
+  <li><strong>验收要对层</strong>:查第①层用 <code>git log --oneline -1</code>;查第③层看 lib/ 的时间戳;查第④层用 <code>dsh --version</code>。一个版本号不对,先定位错在哪一层,再动手。</li>
+</ul>
+
+<h2>4. 回答你的三个问题</h2>
+
+<h3>Q1:为什么 clone 完没有 dsh 命令?</h3>
+<p>因为 <code>git clone</code> 只做第①层,而且做完了也<strong>只有第①层</strong>——②的 node_modules、③的 lib/ 都不在 git 里,要你手动 install + build;④的注册更是没有任何工具会"顺带"帮你做。git 是版本管理工具,它不知道 PATH 是什么。</p>
+<p>补充一个容易混淆的点:clone 完就能跑的 <code>pnpm dsh</code> <strong>不是全局命令</strong>——它是仓库 <a href="../package.json">package.json</a> 里 <code>scripts</code> 字段定义的脚本(用 tsx 直接吃①层源码),只在仓库目录内、通过 pnpm 调用才存在。</p>
+
+<h3>Q2:"注册为命令"到底是什么操作?</h3>
+<p>就是第②节那句话:<strong>在 PATH 目录里放一个可执行文件</strong>。你做过两次,方式不同:</p>
+<ul>
+  <li><strong>8-22 的手动打包</strong>:把①②③层的成果打成压缩包,<code>pnpm add -g</code> 把它<strong>复制</strong>进 pnpm 的全局区域,并在 PATH 目录生成入口文件。<strong>复制是快照</strong>——这就是它永远停在 0.1.0-rc.5 的原因。</li>
+  <li><strong>这次的 wrapper</strong>:PATH 目录里只放一个 3 行脚本,<code>exec node</code> 直接跑你 clone 里的③层产物(<a href="../apps/cli/lib/bin.js">apps/cli/lib/bin.js</a>)。<strong>指向不是快照</strong>——每次 <code>pnpm run build</code> 之后,全局命令自动就是新的。代价:一条依赖链(路径写死在脚本里,若未来 apps/cli 挪位置要改)。</li>
+</ul>
+
+<h3>Q3:选 release(pnpm add -g)还需要手动注册吗?为什么?</h3>
+<p><strong>不需要,但注册这件事仍然发生了——只是安装器替你做了。</strong>npm 包的清单文件里有一个 <a href="https://docs.npmjs.com/cli/v10/configuring-npm/package-json#bin"><code>bin</code> 字段</a>,dsh 的(<a href="../apps/cli/package.json">apps/cli/package.json</a>)写着:</p>
+<pre><code>"bin": { "dsh": "lib/bin.js" }</code></pre>
+<p>这是包作者预先写好的<strong>注册说明书</strong>:"装我的时候,请把 <code>dsh</code> 这个名字接到包内的 lib/bin.js"。<code>pnpm add -g</code> 读它、照办、把入口放进 PATH 目录(<a href="https://pnpm.io/cli/install">pnpm install 文档</a>)。所以三种方式底层是<strong>同一个操作</strong>,区别只在谁执行、指向哪:</p>
+<table>
+  <tr><th></th><th>git clone + wrapper</th><th>手动打包(8-22 的做法)</th><th>pnpm add -g(release)</th></tr>
+  <tr><td>注册动作</td><td>你手写 wrapper</td><td>你打包,安装器建入口</td><td>安装器读 bin 字段自动建</td></tr>
+  <tr><td>④层指向</td><td>你 clone 的③层(活)</td><td>打包时的拷贝(死)</td><td>npm 下载的拷贝(死,随重装刷新)</td></tr>
+  <tr><td>更新方式</td><td>pull + install + clean + build</td><td>重新打包重装</td><td>重新 <code>add -g</code></td></tr>
+  <tr><td>版本</td><td>跟 master(可到未发布版)</td><td>冻结</td><td>跟 npm 已发布版(滞后)</td></tr>
+  <tr><td>能魔改</td><td>✅ 改完 build 即生效</td><td>❌</td><td>❌</td></tr>
+  <tr><td>适合谁</td><td>读源码/魔改/追最新</td><td>—(两头不占,弃)</td><td>只想用命令</td></tr>
+</table>
+<p>顺带一句:<code>pnpm dlx</code>/<code>npx</code> 可以<strong>临时借用</strong>一个命令而不在 PATH 留文件——第④层的另一种形态,知道即可。</p>
+
+<h2>5. git 四件套:更新第①层的机械</h2>
+<table>
+  <tr><th>命令</th><th>一句话机制</th><th>在你事故里的角色</th></tr>
+  <tr><td><code>clone</code></td><td>首次下载:整份历史 + 铺出工作区</td><td>起点(只完成①层)</td></tr>
+  <tr><td><code>pull</code></td><td>= <code>fetch</code>(下载新提交进 .git)+ <code>merge</code>(把本地分支移过去)。<strong>不是同步按钮,是一次合并</strong>;本地脏文件与传入改动重叠时,<strong>拒绝执行</strong>并打印错误</td><td>凶手:拒绝被你看漏,落后 1933 提交而不自知</td></tr>
+  <tr><td><code>diff</code></td><td>工作区 vs 最近提交的差异清单</td><td>pull 前先看自己改了什么</td></tr>
+  <tr><td><code>stash</code></td><td>把脏修改压进一个栈,工作区瞬间变干净;<code>stash pop</code> 取回;<code>restore</code> 则是直接丢弃</td><td>修复:想留的 stash,不要的 restore,然后 pull 畅通</td></tr>
+</table>
+<p>两条习惯,防"看漏"重演:<strong>pull 永远配 <code>--ff-only</code></strong>(只允许纯快进,有分叉就明说,不悄悄制造 merge commit);<strong>pull 后必验收</strong>——<code>git log --oneline -1</code> 或 <code>git status</code> 的 ahead/behind 标注,用眼睛确认①层真的动了。</p>
+
+<h2>6. pnpm 三件套:更新第②③层</h2>
+<ul>
+  <li><code>pnpm install</code>:按 lockfile 把 node_modules 同步到当前源码需要的依赖(这次跨 1933 提交,跑了 4 分钟);</li>
+  <li><code>pnpm run clean</code>:清掉旧构建产物和已删除包的残留(这次清了 <strong>233 个路径</strong>)——防旧文件混进新版本;<code>build</code>:tsc + tsdown 编译出③层的 lib/。</li>
+</ul>
+<p>于是你的<strong>追更口诀</strong>(配 wrapper 方案,④层自动跟上):</p>
+<pre><code>git pull --ff-only &amp;&amp; pnpm install &amp;&amp; pnpm run clean &amp;&amp; pnpm run build
+dsh --version        # 验收:④层读到的版本 = ①层刚拉到的版本</code></pre>
+<p>压缩成一页的速查表在 <a href="../reference/dsh-update-cheatsheet.html">dsh 追更速查表</a>,以后忘了翻它,不用翻这节课。</p>
+
+<h2>检索练习</h2>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q1. 在终端敲下 dsh 并回车,shell 实际做的第一件事是?</p>
+  <button data-correct="true">按 PATH 顺序找第一个叫 dsh 的可执行文件</button>
+  <button data-correct="false">在当前目录递归搜索名为 dsh 的程序文件</button>
+  <button data-correct="false">查询包管理器的全局命令登记数据库</button>
+  <button data-correct="false">加载 shell 配置里定义的 dsh 别名函数</button>
+  <div class="explain">没有登记数据库:PATH 就是一串目录名,shell 挨个翻,第一个命中就执行。所以"命令存在"等价于"PATH 某目录里有这个文件"。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q2. 为什么 git clone 完成后没有全局 dsh 命令?</p>
+  <button data-correct="true">git 只管第①层源码,不知道 PATH 是什么</button>
+  <button data-correct="false">clone 会跳过 bin 目录以减小下载体积</button>
+  <button data-correct="false">全局命令需要 root 权限而 clone 没提权</button>
+  <div class="explain">clone 连②③层(node_modules、lib/)都不给——它们不进 git;④层注册更是 git 世界观之外的事。能用 pnpm dsh 是仓库内脚本,不算全局命令。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q3. pnpm add -g 安装后命令"自动出现",底层机制是?</p>
+  <button data-correct="true">安装器按包的 bin 字段把入口放进 PATH 目录</button>
+  <button data-correct="false">安装器向操作系统内核注册命令名和路径</button>
+  <button data-correct="false">安装器改写 shell 配置新增一条内置命令</button>
+  <div class="explain">bin 字段是包作者预写的"注册说明书",安装器照办——和你手写 wrapper 是同一个操作,只是执行者从你换成了安装器,指向从活源码换成了下载拷贝。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q4. 8 月 22 日手动打包的全局 dsh 为什么永远停在旧版?</p>
+  <button data-correct="true">add -g 装的是当时的拷贝,此后与仓库无关</button>
+  <button data-correct="false">pnpm 每周清理超过七天未运行的命令</button>
+  <button data-correct="false">node 升级后不再识别旧格式的入口文件</button>
+  <div class="explain">复制即快照:仓库此后 pull/Build 多少次,都不会写进那份拷贝。wrapper 改成"指向"后才重新联动——但只联动到③层,build 不能省。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q5. 本地脏文件与传入改动重叠时,git pull 会怎样?</p>
+  <button data-correct="true">拒绝合并并打印错误,仓库原地不动</button>
+  <button data-correct="false">静默跳过冲突文件,只更新其余文件</button>
+  <button data-correct="false">自动把本地修改暂存起来再继续更新</button>
+  <div class="explain">pull = fetch + merge,merge 对重叠修改拒绝执行——保护你的未提交工作。代价是失败只写在终端那一屏:不看输出,就以为更新过了。事后一律用 git log -1 验收。</div>
+</div>
+
+<h2>动手验证(10 分钟,全部零风险)</h2>
+<ol>
+  <li><strong>亲眼看穿一个命令</strong>:<code>which dsh &amp;&amp; cat $(which dsh)</code>,再 <code>echo $PATH | tr ':' '\n' | head -8</code>——找到 wrapper 所在目录在清单里的位置。</li>
+  <li><strong>验证"指向不冻结"</strong>:在 /tmp 下跑 <code>dsh --version</code>(确认与 cwd 无关);然后 <code>ls -l apps/cli/lib/bin.js</code> 看构建时间戳——它就是全局命令此刻读的文件。</li>
+  <li><strong>stash 演练</strong>:在仓库里 <code>echo test &gt;&gt; docs/cordis-tutorial/01-first-plugin.zh.md</code>,依次跑 <code>git diff</code>(看到自己的改动)→ <code>git stash</code>(工作区变干净)→ <code>git stash pop</code>(取回)→ <code>git restore docs/cordis-tutorial/01-first-plugin.zh.md</code>(丢弃)。四个状态亲手过一遍。</li>
+  <li><strong>体会发布节奏</strong>:<code>pnpm view @deepseek-ai/dsh version</code> 对照 GitHub master 的版本号——哪个更新?这对"选 clone 还是选 release"意味着什么?</li>
+</ol>
+
+<h2>本课收获</h2>
+<ul>
+  <li><strong>命令 = PATH 上一个可执行文件</strong>;"注册"就是把文件放进 PATH 目录,无任何魔法。</li>
+  <li><strong>四层管线</strong>(源码→依赖→构建→命令)每层只认自己的更新命令,层间不联动;排故障先定位层,再动手。</li>
+  <li>clone 只给①层;release 的"自带命令"是安装器替你执行了④层(依据包清单的 <code>bin</code> 字段);wrapper 是把④层指向自己 clone 的③层——追更 + 魔改的最优解。</li>
+  <li>pull 是合并不是同步:配 <code>--ff-only</code>,执行后必用 <code>git log -1</code> 验收;脏文件挡路时 diff → stash/restore → 再 pull。</li>
+</ul>
+
+<h2>下一课预告</h2>
+<p>回到主线:第 7 课讲<strong>怎么验收 AI 写的 AI 功能</strong>——你 mytool 票 09 的评测器(硬软分层、expect.soft、检查器先测)就是全部素材。工具链这半边补完,验收那半边接着练。</p>
+
+<div class="callout">
+<strong>推荐精读</strong>(中文版,约 15 分钟):<a href="https://git-scm.com/book/zh/v2">《Pro Git》中文版</a>——只读两处:第 2 章「远程仓库的使用」(fetch 与 pull 的分工)和第 7 章「贮藏」(stash 的栈语义)。读完用一句话回答:pull 和 fetch 差在哪一步?答不出就回课堂问。
+</div>
+
+<footer>
+  <p>dsh 架构课程 · Lesson 0006 · 2026-08-29 · <a href="0005-an-unhandled-promise-killed-the-process.html">上一课</a> · <a href="../reference/dsh-update-cheatsheet.html">追更速查表</a> · <a href="../reference/dsh-plugin-architecture-map.html">插件架构图</a></p>
+  <p>有任何不清楚的地方——随时回来问你的 agent 老师,它读过整个仓库的源码,也可以现场再演示一次任何概念。</p>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+
+</body>
+</html>

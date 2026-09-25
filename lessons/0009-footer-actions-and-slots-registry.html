@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 9 课 · footer 动作区与 slots 注册表——UI 是一张可以查询的名单</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0009 · dsh slots 体系</div>
+  <h1>footer 动作区与 slots 注册表——UI 是一张可以查询的名单</h1>
+  <div class="meta">目标:15 分钟。搞清 palette 按钮住的「footer 动作区」是什么、slots 注册表怎么把界面变成数据;分清 palette 卡片的两条点击路;学会验收「发现/枚举界面内容」类功能时的第一问。</div>
+</header>
+
+<blockquote>
+你的原话:「直接寻找 slots 才是扫描的正道。我制作这个 palette 本身的逻辑也是 for plugin,理应直接指向 slots。但为什么第一次没有直接找到 slots 而是扫全局?我很奇怪。」——这一课就把这句话变成你的固定判断力。
+</blockquote>
+
+<h2>1. 先说 payoff:验收这类功能,第一问是「数据源是注册表还是 DOM?」</h2>
+<p>palette v1.8 的「扫描」按钮为了发现页面上有什么,把整个 DOM 翻了一遍,结果连「进入某个 session」的条目都扫了进来——因为那也是「页面上能点的东西」。v1.9 改成只读 slots 注册表,问题消失。</p>
+<p>这不是实现细节的运气,是一条通用规律:<strong>宿主把扩展点做成「登记处」时,登记处本身就是最准的数据源。</strong>dsh 的每一个 slot 都是一个登记处——插件注册 UI 时留下的是结构化数据(id、label、顺序),不是像素。以后你指挥 AI 做「列出/发现/枚举界面上有什么」的功能,第一句话就该问:<em>「宿主有没有现成的注册表可读?还是真的只能从 DOM 里捞?」</em>palette 这次撞的坑,就是没先问这句话。</p>
+
+<h2>2. slots 注册表:注册即登记,UI 是一行数据</h2>
+<p>客户端插件注入 <code>ctx.inject(['slots'])</code> 后,用一对参数登记 UI:</p>
+<pre><code>ctx.slots.register(options, Component)</code></pre>
+<p>对 <strong>list 类</strong> slot(palette 按钮所在的 footer 动作区就是),options 长这样:</p>
+<pre><code>{ name: 'sidebar.footer.action', id: 'palette-board', label: () =&gt; t('footerButton') }</code></pre>
+<ul>
+  <li><strong>id</strong>:这一项的身份。可选——别的插件可以不填,这是后面「文字匹配」伏笔的根源。</li>
+  <li><strong>label</strong>:显示名。可以是字符串,也可以是<strong>函数(thunk)</strong>——每次渲染重新求值,所以切换语言后按钮文字会自动跟着变。这个优点同时是 footerTrigger 卡片的弱点,见第 5 节。</li>
+  <li><strong>order</strong>:同 slot 内的排序。</li>
+</ul>
+<p>两条对读代码很关键的纪律(注册表实现:<code>packages/client/ui-renderer/src/client/registry.ts:95</code>,<code>SlotRegistry extends Service</code>):</p>
+<ul>
+  <li><strong>slot 的存在跟着声明者走</strong>:一个 slot 只有在声明它的宿主组件挂载时才存在。侧栏不在,footer 动作区就不在。</li>
+  <li><strong>注册表是可枚举的公共服务</strong>:不只是「往里写」,还有公开的读面——<code>registry.ts:366</code> 的 <code>entries(key)</code> 给原始名单(带 label),<code>registry.ts:379</code> 的 <code>entriesOfSlot(key)</code> 给「影子竞争」后的现役胜者名单。palette v1.9 的扫描正是调的 <code>ctx.slots.entriesOfSlot('sidebar.footer.action')</code>。</li>
+</ul>
+<p>换一个角度:第 8 课讲的是 UI 的「呈现形态」,这一课讲的是 UI 的「登记形态」。<strong>形态给用户看,登记给程序读。</strong>一个功能若要跨插件发现别的 UI,走登记、别走像素。</p>
+
+<h2>3. footer 动作区:palette 自己就住在那里</h2>
+<p>打开 <code>packages/client/ui-sidebar/src/client/SidebarRoot.tsx:213</code>,侧栏的「脚」是这么写的:</p>
+<pre><code>&lt;div className={css.footerActions}&gt;
+  {renderSlot('sidebar.footer.action', { wide })}
+&lt;/div&gt;</code></pre>
+<p>宿主在 <code>packages/extensions/cordis-client-runner/src/client/slot-catalog.ts:1988</code> 给这个位置立了正式户口:</p>
+<blockquote>key: <code>sidebar.footer.action</code> · kind: <strong>list</strong> · summary: "Optional actions beside Settings at the sidebar foot."(Settings 旁边的可选动作,每个插件登记一项)</blockquote>
+<p>所以这个区域的规矩是:<strong>宿主只出一块地,谁想加按钮谁登记。</strong>palette-board 的 client 半(<code>src/client/index.tsx</code>)调 <code>ctx.slots.register</code> 把自己的圆形按钮放进去;侧栏设置、别的插件,同样各占一行。你点开 palette 时,那个按钮就是从这张名单里渲染出来的。</p>
+<p>顺带一提,这份 slot-catalog 是宿主发布的<strong>全部 slot 的编译期清单</strong>——每个 key 的类型(list/single)、谁声明、登记选项、示例代码都在。验收「往哪儿挂 UI」的问题时,它就是官方答案,不用翻 DOM 猜。</p>
+
+<h2>4. 两条点击路:link 卡片与 footerTrigger 卡片</h2>
+<p>你在第 3 问里疑惑的「卡片触发到底是谁写的」,答案是:<strong>两条路一直并存,谁也没改谁</strong>。它们恰好落在第 8 课那条主轴的两端:</p>
+<table>
+  <tr><th></th><th>link 卡片(链接卡)</th><th>footerTrigger 卡片(收编卡)</th></tr>
+  <tr><td><strong>怎么来的</strong></td><td>你亲手在注册弹窗里填「页面链接」</td><td>点「扫描」从 footer 注册表里收编</td></tr>
+  <tr><td><strong>存什么</strong></td><td>一个 URL 字符串</td><td>目标按钮的 label 文字</td></tr>
+  <tr><td><strong>点击时</strong></td><td><code>window.open(url)</code> 开新标签页</td><td>在 footer 区域找到那个按钮,调 <code>.click()</code></td></tr>
+  <tr><td><strong>主轴位置</strong></td><td>新 browsing context(第 8 课右支)</td><td>同 document,真按钮、真处理器(左支)</td></tr>
+</table>
+<p>link 卡片自第一版就有,从未变过。footerTrigger 是沙箱时代就存在的另一条路:扫描发现的 footer 动作「一键收编」成卡片,之后每次点击都等价于替你按了那个真按钮——同 document,函数调用级精确。</p>
+
+<h2>5. 口径同源:扫描看见的世界 = 触发能点的世界</h2>
+<p>footerTrigger 的触发实现(<code>src/client/catalog.ts</code> 的 <code>findFooterButton</code>)有个刻意的限制:<strong>只在 footer 动作区里找,找不到就报「未找到」,绝不扩大到全页。</strong>为什么?因为它靠<strong>文字匹配</strong>定位按钮,而注册表的 id 是可选的、渲染出来的 DOM 又不带 id——文字是唯一现成的桥。若允许全页找,同名文字会点错对象。</p>
+<p>于是 v1.9 立了这条纪律:<strong>扫描的口径(footer 注册表)= 触发的口径(footer 区域)</strong>。扫描时从名单里看到的,触发时就在同一块地里找;区间不扩大,误伤就不发生。</p>
+<div class="callout"><strong>诚实边界</strong>:文字匹配有一个已知弱点——label 是 thunk,切换语言后按钮文字变了,旧卡片存的旧文字就找不到按钮(卡片失效,需重新扫描收编)。而 link 卡片存的是 URL,不受影响。这不是 bug,是「id 可选」现实下的取舍;要根治,得等宿主把 id 透出到 DOM。</div>
+
+<h2>6. 复盘:为什么 v1.8 先扫了 DOM?</h2>
+<p>你的疑问值得正面回答。当时的推理链是:①目标被表述成「发现<strong>页面上</strong>已有的按钮」——字面上指向 DOM;②想当然认为 slots 注册表是「给我们写进去的」,没验证它有没有公开的读面;③DOM 扫描看起来最通用,就先做了。错在 ②:<strong>没读注册表的源码就假设它只写不读</strong>。事实上 <code>entriesOfSlot</code> 一直是公共服务,读一行名单就能拿到带 label 的现役清单。</p>
+<p>把教训抽成一句你以后可以直接拿来指挥 AI 的话:</p>
+<blockquote><strong>「做发现类功能之前,先找事实的源头。有注册表读注册表,没有才碰 DOM——并且把『为什么没有』问清楚。」</strong></blockquote>
+<p>DOM 是渲染的<strong>结果</strong>,注册表是事实的<strong>源头</strong>。从结果反推源头,永远比直接读源头又慢又脏——这就是 v1.8 → v1.9 的全部故事。</p>
+
+<h2>7. 检验你的理解</h2>
+
+<div class="quiz" data-quiz>
+  <p class="q">① palette 的「扫描」要列出侧栏 footer 里现有哪些插件按钮,正确的数据源是?</p>
+  <button data-correct="false">遍历整页 DOM 收集全部可点元素</button>
+  <button data-correct="true">读 slots 注册表的 entriesOfSlot 名单</button>
+  <button data-correct="false">读配置文件里手工维护的按钮清单</button>
+  <p class="explain">注册表是现役名单:谁挂载谁在,还带 label。DOM 是渲染结果,会把 session 条目等无关可点物一起捞进来(v1.8 的坑);手工清单是第二事实源,会和真页面漂移。</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">② footerTrigger 卡片点击时为什么只在 footer 区域找按钮,不扩大到全页找同文字?</p>
+  <button data-correct="false">因为全页查找的代码写起来更费事</button>
+  <button data-correct="true">为了让扫描口径与触发口径保持一致</button>
+  <button data-correct="false">因为 footer 之外的按钮都收不到点击</button>
+  <p class="explain">口径同源:扫描从 footer 注册表看到谁,触发就只在 footer 地里找谁,区间永不扩大。文字匹配没有 id 可靠,围栏越小越不会点错对象。</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">③ 一张 footerTrigger 卡片在切换界面语言后点不动了,最可能的原因是什么?</p>
+  <button data-correct="false">切换语言时 slots 注册表被整个清空</button>
+  <button data-correct="true">label thunk 换了文案,卡片还存旧文字</button>
+  <button data-correct="false">footer 区域切换语言后不再渲染了</button>
+  <p class="explain">label 是每次渲染重新求值的函数,切语言后按钮文字变了;卡片按文字找按钮,旧文字自然落空。link 卡片存 URL,不受此影响——这是文字匹配路线的已知边界。</p>
+</div>
+
+<h2>8. 深入阅读</h2>
+<p>主推(一手来源,都在你机器上):<code>packages/extensions/cordis-client-runner/src/client/slot-catalog.ts</code>(宿主全部 slot 的编译期清单——「往哪儿挂 UI」的官方答案)、<code>packages/client/ui-renderer/src/client/registry.ts</code>(注册表本体,看 <code>entries</code>/<code>entriesOfSlot</code> 两个读面)、<code>packages/client/ui-sidebar/src/client/SidebarRoot.tsx</code>(footer 动作区的 render 现场)。插件侧对照:palette 自己的 <code>src/client/scan.ts</code>(读名单)与 <code>src/client/catalog.ts</code>(围栏内找按钮)。名词速查见<a href="../reference/ui-surfaces-glossary.html">UI Surfaces 术语表</a>;上一课的形态主轴见<a href="0008-ui-surface-taxonomy.html">第 8 课</a>。</p>
+
+<blockquote>有不清楚的地方,随时问你的老师(也就是我)。下一步可以做一节动手课:随便挑一个 slot-catalog 里的 key,让 AI 写一个最小插件登记进去,你来验收它选的 key、kind 和 label 形态对不对。</blockquote>
+
+<footer>教学文件,不入 git。上一课:<a href="0008-ui-surface-taxonomy.html">0008 · UI 的出场方式</a>。速查:<a href="../reference/ui-surfaces-glossary.html">UI Surfaces 术语表</a>。</footer>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

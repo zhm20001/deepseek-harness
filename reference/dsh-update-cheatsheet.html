@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>速查表 · dsh 追更:从源码到命令</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Reference · 打印友好</div>
+  <h1>dsh 追更速查表</h1>
+  <div class="meta">Lesson <a href="../lessons/0006-from-source-to-command.html">0006</a>的压缩版。忘了才翻,不背。</div>
+</header>
+
+<h2>四层管线:版本不对,先定位层</h2>
+<table>
+  <tr><th>层</th><th>看哪</th><th>更新命令</th><th>验收方法</th></tr>
+  <tr><td>① 源码</td><td>clone 工作区</td><td><code>git pull --ff-only</code></td><td><code>git log --oneline -1</code></td></tr>
+  <tr><td>② 依赖</td><td>node_modules(不进 git)</td><td><code>pnpm install</code></td><td>install 输出无 error</td></tr>
+  <tr><td>③ 构建产物</td><td>apps/cli/lib/ 等(不进 git)</td><td><code>pnpm run build</code></td><td>lib/ 时间戳是新的</td></tr>
+  <tr><td>④ 命令</td><td>PATH 目录里的可执行文件</td><td>本方案无需动(wrapper 指向③)</td><td><code>dsh --version</code></td></tr>
+</table>
+
+<h2>追更口诀(当前方案:clone + wrapper)</h2>
+<pre><code>cd ~/deepseek-harness
+git pull --ff-only &amp;&amp; pnpm install &amp;&amp; pnpm run clean &amp;&amp; pnpm run build
+dsh --version          # 验收:应等于 GitHub master 的版本</code></pre>
+<p>全局命令的真实身份:<code>~/Library/pnpm/bin/dsh</code> 是一个 3 行脚本,<code>exec node ~/deepseek-harness/apps/cli/lib/bin.js "$@"</code>——指向 clone 的③层产物,build 后自动变新。<strong>不要</strong>再 <code>pnpm add -g @deepseek-ai/dsh</code>,会覆盖 wrapper 回到冻结拷贝。</p>
+
+<h2>git 速查</h2>
+<table>
+  <tr><th>命令</th><th>一句话</th></tr>
+  <tr><td><code>clone</code></td><td>首次下载整份历史 + 铺工作区(只有①层)</td></tr>
+  <tr><td><code>pull</code></td><td>= fetch(下载新提交)+ merge(分支前移);<strong>是合并不是同步</strong>,脏文件重叠时会拒绝执行</td></tr>
+  <tr><td><code>status</code> / <code>log -1</code></td><td>看 ahead/behind 与当前提交——pull 后必看</td></tr>
+  <tr><td><code>diff</code></td><td>工作区 vs 最近提交的差异;pull 前先看自己改了什么</td></tr>
+  <tr><td><code>stash</code> / <code>stash pop</code></td><td>脏修改压栈 / 取回;让 pull 畅通</td></tr>
+  <tr><td><code>restore &lt;file&gt;</code></td><td>丢弃工作区修改(想清楚再敲)</td></tr>
+</table>
+
+<h2>pnpm 速查</h2>
+<table>
+  <tr><th>命令</th><th>一句话</th></tr>
+  <tr><td><code>install</code></td><td>按 lockfile 同步 node_modules(②层)</td></tr>
+  <tr><td><code>run clean</code></td><td>清旧构建产物和已删包残留(build 前)</td></tr>
+  <tr><td><code>run build</code></td><td>编译出 lib/(③层);魔改源码后跑它即生效</td></tr>
+  <tr><td><code>view &lt;pkg&gt; version</code></td><td>看 npm 已发布版本(常落后于 master)</td></tr>
+</table>
+
+<h2>症状 → 诊断 → 解法</h2>
+<table>
+  <tr><th>症状</th><th>先查</th><th>解法</th></tr>
+  <tr><td><code>dsh --version</code> 比 GitHub 旧</td><td>①层:<code>git log --oneline -1</code>、<code>git status</code></td><td>落后 → 追更口诀;不落后 → 看④层 <code>cat $(which dsh)</code> 指向哪</td></tr>
+  <tr><td>pull 报 <em>local changes would be overwritten</em></td><td><code>git diff</code> 看改动要不要</td><td>不要:<code>git restore &lt;file&gt;</code>;要:<code>git stash</code> → pull → <code>git stash pop</code>(冲突则手动改)</td></tr>
+  <tr><td><code>command not found: dsh</code></td><td><code>which -a dsh</code>、<code>echo $PATH</code></td><td>PATH 目录里没有入口文件:重建 wrapper(见上)或 <code>pnpm add -g</code></td></tr>
+  <tr><td>build 后行为仍是旧的</td><td><code>ls -l apps/cli/lib/</code> 时间戳</td><td><code>pnpm run clean &amp;&amp; pnpm run build</code> 清残留重建</td></tr>
+  <tr><td>全局 dsh 版本"永远不动"</td><td><code>pnpm ls -g</code></td><td>装的是冻结拷贝(打包/npm)——换 wrapper 或每次重装</td></tr>
+</table>
+
+<h2>底线三句</h2>
+<ul>
+  <li>命令只是 PATH 上的一个可执行文件;"注册"= 把文件放进 PATH 目录。</li>
+  <li>每层只认自己的更新命令;git 管不到④,pnpm 管不到①。</li>
+  <li>pull 是合并,会拒绝、会被看漏——执行后必须 <code>git log -1</code> 验收。</li>
+</ul>
+
+<footer>
+  <p>dsh 架构课程 · Reference · 2026-08-29 · <a href="../lessons/0006-from-source-to-command.html">完整课程:Lesson 0006</a></p>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 5 课 · 一张没兑付的欠条,杀死了整个程序</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0005 · 真实事故解剖</div>
+  <h1>一张没兑付的欠条,杀死了整个程序</h1>
+  <div class="meta">目标:15 分钟后,你能拿一段崩溃栈从下往上读出凶手;能用自己的话解释 unhandledRejection 为什么致命;并且下次验收 AI 写的插件时,知道专门去检查一个地方——<strong>定时器和回调里的 Promise,有没有人接住它的失败</strong>。</div>
+</header>
+
+<blockquote>
+这不是编的教学案例。2026-08-27 下午,你自己的 dsh-usage-board 插件两次把整个 dsh 进程杀掉(exit 1),看起来"像是换本地模型导致的"。完整调查记录在 <a href="../../projects/usage-dashboard/dsh-usage-board/docs/incident-2026-08-27-exit-1.md">事故文档</a> 里;本课把它的<strong>编程原理</strong>讲透——你已经是插件作者了,这类事故以后要能自己认出来。
+</blockquote>
+
+<h2>1. 凶案现场:崩溃栈要倒着读</h2>
+<p>程序猝死时留下的遗言叫<strong>崩溃栈(stack trace)</strong>:一张"谁叫谁做事"的清单。读法是<strong>从下往上</strong>——最下面是起点,最上面是死因。这次事故的遗言:</p>
+<pre><code>dsh: fatal load failure: Error: session "undefined" is not live in this store
+    at Proxy.liveEntryFor (宿主 session 服务的内部校验)   ← 4. 死因:发现对象不对
+    at Proxy.flush (宿主的 flush 函数)                    ← 3. 它调用了内部校验
+    at Object.flushSession (你的插件 dsh-usage-board)     ← 2. 凶手:传错了东西
+    at TelemetryCollector.flush (你的插件)                ← 1. 起点:批量落库开始
+    at Timeout.&lt;anonymous&gt; (一个 250ms 定时器)            ← 0. 引信:时间到了</code></pre>
+<p>用人话倒着念一遍:<strong>一个定时器到点了 → 插件开始把统计数据写进数据库 → 写之前先请宿主把日志刷盘 → 宿主一看手里的东西不对,当场掀桌 → 整个进程退出,退出码 1。</strong>下一节解释每个环节里藏着的专有名词。</p>
+
+<h2>2. 三张名词卡(零基础版)</h2>
+
+<h3>名词卡一:函数签名 = 插头与插座</h3>
+<p>每个函数声明自己"要收什么样的东西":<code>flush(session: Session)</code> 意思是"我只收一个 <strong>Session 对象</strong>"。这叫<strong>签名(signature)</strong>。调用时该传什么,就像插头该配什么插座——形状不对就插不进去。<strong>但 JavaScript 运行时不检查形状</strong>:你硬把一根 <strong>字符串</strong>(比如 <code>"session-b46b…"</code>)插进去,它不报错,直到宿主内部去读 <code>session.id</code> 时才发现——字符串身上根本没有 <code>.id</code>,读出来是 <code>undefined</code>,于是报错 <em>"session \"undefined\" is not live"</em>。<strong>类型不匹配不是当场爆炸,而是延迟到"用的时候"才爆炸</strong>——这是它危险的根源。</p>
+
+<h3>名词卡二:Promise = 一张欠条</h3>
+<p>异步操作(等磁盘、等网络、等模型吐字)不会立刻给结果,只先给你一张凭证,叫 <strong>Promise</strong>(可译"承诺")。三种状态:<strong>pending</strong>(还没兑现)、<strong>fulfilled</strong>(兑现了,拿到结果)、<strong>rejected</strong>(拒付——出了错)。配套语法:</p>
+<ul>
+  <li><code>await 欠条</code> = "站在这里等它兑现,拒付就把错误抛给我处理";</li>
+  <li><code>欠条.catch(处理函数)</code> = "我不等,但拒付了叫我"——<strong>接住失败的人</strong>。</li>
+</ul>
+<p>关键规则:<strong>一张 rejected 的欠条,如果从头到尾没有任何人 <code>await</code> 或 <code>.catch</code> 它,就是 unhandledRejection(未处理的拒绝)</strong>。而 Node.js 从 15 版起对 unhandledRejection 的默认处罚是:<strong>直接杀死整个进程</strong>。一张废纸,一条人命。</p>
+
+<h3>名词卡三:fire-and-forget = 把欠条扔进抽屉</h3>
+<p>"发射后不管"——代码发起一个异步操作,既不 <code>await</code> 也不 <code>.catch</code>。写法常见两种:<code>doWork()</code> 光调用不看返回值,或 <code>void doWork()</code> 明确表示"我故意不看"。它不是天生错误——但等于<strong>把欠条扔进抽屉:兑现了最好,拒付了没人知道</strong>。在这次事故里,扔欠条的地方是个定时器(<code>setTimer(250ms, () =&gt; void this.flush())</code>):定时器回调不属于任何"等人"的流程,错误一旦在里面发生,就再也无人接手。</p>
+
+<h2>3. 逻辑链:六步杀死一个进程</h2>
+<p>现在把名词卡串起来。每步左边是真实机制,右边是修复后的代码对照(都在你仓库里,commit <code>7750c36</code>):</p>
+<table>
+  <tr><th>步</th><th>发生了什么</th><th>欠条比喻</th></tr>
+  <tr><td>①</td><td>模型发出工具调用,插件收到 <code>session/event</code>,折算出第一批待写行</td><td>统计员开始记账</td></tr>
+  <tr><td>②</td><td>队列闲置 250ms,定时器到点,执行 <code>void this.flush()</code></td><td>定时闹钟响了,把欠条<strong>扔进抽屉</strong></td></tr>
+  <tr><td>③</td><td>flush 先 <code>await flushSession(sessionId)</code>——但把<strong>字符串</strong>传给了要<strong>Session 对象</strong>的宿主函数</td><td>拿错了票据去柜台</td></tr>
+  <tr><td>④</td><td>宿主读 <code>session.id</code> 得 <code>undefined</code>,抛出错误;async 函数里一抛错,返回的 Promise 变 <strong>rejected</strong></td><td>柜台拒付,欠条作废</td></tr>
+  <tr><td>⑤</td><td>调用方是定时器回调,当初 <code>void</code> 掉了返回值——没有 <code>catch</code>,没有 <code>await</code></td><td><strong>抽屉里的废纸无人过目</strong></td></tr>
+  <tr><td>⑥</td><td>Node 判定 unhandledRejection;dsh 的 fail-loud 策略打印一行诊断,<code>exit(1)</code></td><td>银行连夜倒闭</td></tr>
+</table>
+<p>注意②和③的<strong>时间差骗局</strong>:闹钟在"模型刚发出工具调用后 250ms"才响,所以闪退看起来发生在"工具执行时"——其实是落库定时器到点。事故文档里还列了另外两个巧合(本地模型首字要 131 秒、重写插件后首次真对话),三个巧合叠出"换本地模型导致的"这个错觉。<strong>调试第一课:相邻 ≠ 因果。</strong></p>
+
+<h2>4. 为什么 TypeScript 和 205 个测试都没拦住?</h2>
+<p>你可能会问:签名不匹配,编译器不是应该报错吗?测试不是全绿吗?这是本课最重要的一问。</p>
+<p><strong>TypeScript 被骗了。</strong>你的插件为了"零宿主依赖",在 <a href="../../projects/usage-dashboard/dsh-usage-board/src/index.ts">src/index.ts</a> 里<strong>手写了一份宿主服务的镜像类型</a></strong>(<code>HostContext</code>),其中把 flush 的参数写成了 <code>string</code>。TS 只检查"你的调用 vs <strong>你声明的</strong>类型",不检查"你声明的 vs <strong>宿主真身</strong>"。镜像写错,编译器就替你把错误背书了。这正是第 4 课契约方法的反面案例:<strong>手写契约一旦与真身失配,所有检查都会越过真错误</strong>。</p>
+<p><strong>测试也被骗了。</strong>205 个测试里,宿主是用 mock(替身)模拟的——而这个 mock 也是照着同一份错误镜像写的,<code>flush("字符串")</code> 在替身身上"能跑通"。实现和测试一起错,红灯永远不亮。<strong>镜子照镜子,照不出真脸。</strong></p>
+<div class="callout">验收视角:AI 给你交付带"手写接口镜像 + mock 测试"的插件时,要问一句——<strong>"镜像和宿主真身之间,有没有哪怕一条对过账的测试?"</strong>没有的话,签名漂移就全靠线上爆炸来发现。这也解释了为什么"装好插件、看到历史数据进库"不等于没病:那条路(backfill)不经过出错的屏障。</div>
+
+<h2>5. fail-loud 与两层防线</h2>
+<p>宿主 dsh 对 unhandledRejection 的策略叫 <strong>fail-loud(响亮地失败)</strong>:与其带着说不清的状态继续跑,不如当场死给你看,还留一行遗言。对一个 agent 宿主这是理性的——半死不活的状态可能悄悄写坏你的数据。<strong>但它的代价是:任何一个插件的任何一张废欠条,都能杀死全家。</strong></p>
+<p>所以正确分工是两层:</p>
+<ul>
+  <li><strong>宿主层(没变)</strong>:进程级错误,响亮地死;</li>
+  <li><strong>插件层(这次修的)</strong>:自己发起的异步操作,自己接住失败——修复后定时器入口全部走 <code>flushSafe()</code>:<code>flush().catch(err =&gt; 记入 ingestion_error)</code>。一次落库失败,最多损失一批统计数据并留下案底,<strong>不可能再杀宿主</strong>。</li>
+</ul>
+
+<h2>检索练习</h2>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q1. 一个 rejected 的 Promise 从头到尾没人 await 或 .catch,新版 Node.js 默认会怎样?</p>
+  <button data-correct="false">打印一条警告,然后继续运行</button>
+  <button data-correct="true">判定为 unhandledRejection,杀死进程</button>
+  <button data-correct="false">挂起该操作,等下次重试</button>
+  <div class="explain">Node 15 起默认策略就是抛出未捕获异常、进程退出。"只警告不退出"是老版本行为——很多教程还停留在那个时代。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q2. 这次事故的根因(第一因)是哪一个?</p>
+  <button data-correct="false">本地模型响应太慢</button>
+  <button data-correct="true">字符串传给了要对象的函数</button>
+  <button data-correct="false">数据库文件被别的进程锁住</button>
+  <div class="explain">模型慢只是巧合之一;锁库从未发生。第一因是签名错配,后面每一步(定时器、无人接住、fail-loud)只是把它放大成进程死亡。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q3. 205 个测试全绿,为什么线上还是崩了?</p>
+  <button data-correct="false">测试数量不够,再加两百个就行</button>
+  <button data-correct="true">测试的 mock 与实现共用同一份错误镜像</button>
+  <button data-correct="false">本地模型的行为无法被单元测试覆盖</button>
+  <div class="explain">替身和实现照着同一份写错的"说明书"长,自然一起通过。需要的是让契约对一次"真身"——例如一条对照宿主真实类型编译的测试。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q4. 修复里的 flushSafe() 体现了什么原则?</p>
+  <button data-correct="true">插件边界内自己接住错误,不上抛宿主</button>
+  <button data-correct="false">把一切错误静默吞掉,不留任何痕迹</button>
+  <button data-correct="false">出错就立刻退出,让系统重启进程</button>
+  <div class="explain">接住 ≠ 吞掉:失败被记入 ingestion_error 表,损失有案可查。"静默吞掉"和"立刻退出"恰好是两个反例。</div>
+</div>
+
+<h2>动手验证(10 分钟)</h2>
+<ol>
+  <li>看修复本身:<code>cd ~/projects/usage-dashboard/dsh-usage-board &amp;&amp; git show 7750c36</code>。只看两处——<code>src/index.ts</code> 里 <code>get(sessionId)</code> 那三行(根因),<code>telemetry.ts</code> 里 <code>flushSafe()</code>(防线)。对着第 3 节的六步表,指出各自掐断了哪一步。</li>
+  <li>亲手制造一次"欠条拒付":在 Node 里跑 <code>node -e "Promise.reject(new Error('废欠条'))"</code>,观察进程退出码(<code>echo $?</code>)。再跑 <code>node -e "Promise.reject(new Error('废欠条')).catch(e =&gt; console.log('接住了', e.message))"</code> 对比。</li>
+  <li>检查你另一个插件(mytool-dsh-notes)有没有同类隐患:搜一遍定时器/事件回调里的异步调用,看返回的 Promise 是被 await、被 .catch,还是被扔进了抽屉。</li>
+</ol>
+
+<h2>本课收获</h2>
+<ul>
+  <li>崩溃栈<strong>从下往上读</strong>:最底是引信,最顶是死因;中间离你代码最近的那一帧,通常就是凶手。</li>
+  <li>三张名词卡:签名=插头插座(JS 运行时不查形状,延迟爆炸)、Promise=欠条(rejected 且无人接=unhandledRejection=进程死亡)、fire-and-forget=把欠条扔抽屉。</li>
+  <li>手写镜像类型会骗过编译器,mock 会跟着一起错——<strong>契约必须对过一次真身</strong>。</li>
+  <li>验收清单 +1:插件里定时器/回调发起的异步操作,必须有 .catch;新插件装好后必须做一次"真路径冒烟"(真实对话一次),不能只看安装期的数据。</li>
+</ul>
+
+<h2>下一课预告</h2>
+<p>这次事故还留了一个尾巴:统计库有"数据缺口"(崩溃期间与未装插件期间的会话不会自动补录),需要给插件加一个 rescan 入口——那会是一次完整的"从验收发现的问题倒推设计"的练习,正好接上第 4 课的契约方法。</p>
+
+<div class="callout">
+<strong>推荐精读</strong>(先读中文版,约 10 分钟):<a href="https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise">MDN:Promise</a>——只读开头的"描述"部分,把 pending/fulfilled/rejected 三状态用自己的话复述一遍;然后浏览 <a href="https://nodejs.org/api/process.html#event-unhandledrejection">Node.js 官方文档:unhandledRejection 事件</a>,看官方如何描述默认行为。
+</div>
+
+<footer>
+  <p>dsh 架构课程 · Lesson 0005 · 2026-08-28 · <a href="0004-turn-prose-into-contracts.html">上一课</a> · <a href="../reference/dsh-plugin-architecture-map.html">参考表</a> · <a href="../../projects/usage-dashboard/dsh-usage-board/docs/incident-2026-08-27-exit-1.md">事故文档</a></p>
+  <p>有任何不清楚的地方——随时回来问你的 agent 老师,它读过整个仓库的源码,也可以现场再演示一次任何概念。</p>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+
+</body>
+</html>

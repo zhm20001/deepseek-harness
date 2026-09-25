@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 3 课 · 解剖一个真实插件:mytool-dsh-notes</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0003 · mytool 实战</div>
+  <h1>解剖一个真实插件:mytool-dsh-notes</h1>
+  <div class="meta">目标:15 分钟后,你能对着你自己项目里那个 AI 写的 dsh 插件,按部位逐项验收——每个部位该有什么、缺了会长什么样。</div>
+</header>
+
+<blockquote>
+上节课预告了「四条集成路径怎么选」。我们没有纸上谈兵——过去几个 ticket 里,你的 mytool 真的走完了其中一条。<strong>本课解剖的不是一个教学示例,是你仓库里真实跑通、81 个测试全绿的那个插件</strong>:<a href="../../projects/mytool/dsh/src/service.ts">~/projects/mytool/dsh/src/service.ts</a>。
+</blockquote>
+
+<h2>1. 四条路,我们选了哪条、为什么</h2>
+<table>
+  <tr><th>路径</th><th>适合</th><th>代价</th></tr>
+  <tr><td>直接调 LLM API SDK</td><td>一次性文本任务</td><td>没有 agent 生态:工具、会话、重试全自己来</td></tr>
+  <tr><td>dsh 客户端(JSON-RPC / ACP)</td><td>驱动现成 agent 干活</td><td>能力受限于已有工具面</td></tr>
+  <tr><td><strong>写 tool 插件(本次)</strong></td><td>域逻辑 + 判断混合</td><td>要懂插件模型(正是本课)</td></tr>
+  <tr><td>内嵌 agent-spine</td><td>自己组装 agent 服务端</td><td>自由度最大,维护最重</td></tr>
+</table>
+<p>mytool 的域是「硬存储操作(save/find/restore)+ 软判断(整合)」混合:硬的部分适合做成工具让 agent 调,判断留在对话里——所以选插件路,且<strong>不碰 loop 一行</strong>。</p>
+
+<h2>2. 装载:外部插件怎么进 dsh</h2>
+<p>插件住在仓库外(<code>~/projects/mytool/dsh</code>),装载靠两件事:</p>
+<ol>
+  <li><strong>patch 追加一行</strong>(第 2 课的语法原样可用):<code>- insert: - id: notes / name: /Users/zhm20001/projects/mytool/dsh</code>——绝对路径行,tsx 直载 TS 源码,不用先 build。</li>
+  <li><strong>裸包名靠 link: 依赖解析</strong>:插件代码里 <code>import … from '@deepseek-ai/dsh-tools'</code> 能找到 harness 源码树,是因为插件包 node_modules 里放了 <code>link:</code> 依赖指向 harness 包目录——同一个 realpath,同一个模块实例,没有版本漂移。</li>
+</ol>
+<div class="callout">验收问法:<strong>「AI 给我的安装步骤,在干净机器上能不能从零跑通?」</strong>外部插件的装载路径是第一道坎;跑 <code>--dump-config</code> 看到你的行出现在最终清单里,才算装上了。</div>
+
+<h2>3. Service 骨架:插件的本体</h2>
+<pre><code>export class NotesService extends Service {
+  static inject = ['tools', 'llm']      // 硬依赖:tools 不在,插件整个不装
+  static Config = Schema.object({        // 可从 cordis.yml 校验的配置面
+    notesDir: Schema.string().required(),
+    integrate: Schema.object({ provider: … 'deepseek-official', model: … 'deepseek-chat', … }),
+    strongScoreThreshold: Schema.number().default(15),
+    maxTags: Schema.number().default(6),
+  })
+  constructor(ctx) {
+    super(ctx, 'notes')                  // 服务名 → 全局 ctx.notes
+    for (const register of [saveTool, readTool, …]) ctx.effect(() => register(ctx, this), …)
+    ctx.inject(['skills'], sctx =&gt; { … })  // 可选依赖:有 skills 服务才注册技能
+  }
+}</code></pre>
+<p>四个部位,验收各问一句:<strong>inject</strong> 声明对吗(多声明会让插件无故 pend,少声明会在运行时炸)?<strong>Config</strong> 里部署会变的量(provider、路径、阈值)是不是都在,还是被写死在代码里?<strong>注册是否全走 <code>ctx.effect</code></strong>(否则卸载漏清场)?<strong>「有则用无则跳」的依赖</strong>是不是用了 <code>ctx.inject</code> 而不是硬声明?</p>
+
+<h2>4. defineTool 五面:note_integrate 做标本</h2>
+<table>
+  <tr><th>面</th><th>作用</th><th>验收问</th></tr>
+  <tr><td><code>parameters</code></td><td>模型看到的参数契约(required / enum / 描述)</td><td>模型能只靠描述用对吗?</td></tr>
+  <tr><td><code>output.schema</code></td><td>结果的类型契约(回放 / UI 用)</td><td>字段是否 additionalProperties:false?</td></tr>
+  <tr><td><code>output.render</code></td><td>给用户看的纯函数摘要</td><td>是不是纯函数?会不会把全文塞给模型?</td></tr>
+  <tr><td><code>presentationMeta</code> + <code>presentResult</code></td><td>diff 卡:meta 里持久化,呈现时读回,错误返回 undefined</td><td>呈现坏了会不会连累工具本身?</td></tr>
+  <tr><td><code>execute</code></td><td>委托 service;抛错 = isError 结果</td><td>有没有多余的 try/catch 把失败吞成假成功?</td></tr>
+</table>
+
+<h2>5. ctx.llm 直调五件套(背下来当清单)</h2>
+<pre><code>const messages = [createUserMessage({ content: […], source: { kind: 'plugin', plugin: 'mytool-dsh-notes' } })]
+using callDeadline = deadline(req.signal, config.timeoutMs, 'NOTE_INTEGRATE_TIMEOUT')
+const options = deepFreeze({ provider, model, temperature, messages, system, signal })
+for await (const part of ctx.llm.stream(options)) { assembler.push(part); req.signal.throwIfAborted() }
+const err = finishError(finish)   // stop→过;error/aborted→带 code;max-tokens/tool-calls→具体信息</code></pre>
+<ol>
+  <li><strong>来源标记</strong>(source.plugin)——日志里能看出这次调用是谁发起的;</li>
+  <li><strong><code>using</code> + deadline</strong>——超时在异常路径也释放;</li>
+  <li><strong>deepFreeze</strong>——请求一经装配不被偷改;</li>
+  <li><strong>流式循环里 throwIfAborted</strong>——取消即时生效;</li>
+  <li><strong>finishError 翻译</strong>——终止原因变成该报的错,而不是笼统一句 failed。</li>
+</ol>
+<div class="callout">AI 写 LLM 调用时最常缺 2 和 5:没有 deadline(挂死),不区分 max-tokens 和真错误(误诊)。对着这五件逐一勾。</div>
+
+<h2>6. 一个真实的平台约束:为什么没有自定义事件</h2>
+<p>原设计想仿 session-title-llm 发一个自定义事件记录 LLM 请求。实现时撞墙:<strong>仓外插件的事件类型不在持久化重载的事件白名单里</strong>——落盘了,会话日志重载直接被拒绝。处置:可重建性改由<strong>标准 tool 事件</strong>承载(材料在调用参数、模板版本在结果、前版在 <code>.bak</code>),spec 补了带日期的追记。这示范了验收者最该有的一种反应:<strong>发现「设计说的」和「实现做的」不一致时,要的是文档化的修正,不是假装一致,也不是悄悄删需求。</strong></p>
+
+<h2>检索练习</h2>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q1. 插件声明了 <code>static inject = ['tools', 'llm']</code>,但目标 profile 没有 llm 服务。会发生什么?</p>
+  <button data-correct="false">插件正常加载,调用时报错</button>
+  <button data-correct="true">插件不加载,一直 pend 等依赖</button>
+  <button data-correct="false">dsh 启动即崩溃</button>
+  <button data-correct="false">自动降级为空实现</button>
+  <div class="explain">inject 是硬门:依赖不齐,插件整个不装。想要「有则用无则跳」要用 constructor 里的 <code>ctx.inject(['skills'], cb)</code>——mytool 对 skills 服务就是这么做的。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q2. 外部插件源码里 <code>import '@deepseek-ai/dsh-tools'</code> 能解析,靠的是什么?</p>
+  <button data-correct="false">dsh 全局注册的模块别名</button>
+  <button data-correct="false">NODE_PATH 环境变量</button>
+  <button data-correct="true">插件包 node_modules 里的 link: 依赖指向 harness 包目录</button>
+  <button data-correct="false">发布到 npm 的正式版本</button>
+  <div class="explain">link: 依赖把裸包名解析到 harness 源码树,同一 realpath 同一模块实例——外部源码插件不发布也能用上仓内的服务。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q3. note_integrate 的 execute 里 LLM 调用超时抛错,工具结果会怎样?</p>
+  <button data-correct="false">需要自己 try/catch 转成返回值</button>
+  <button data-correct="true">框架转成 isError 结果,错误文本给模型自纠</button>
+  <button data-correct="false">进程崩溃</button>
+  <button data-correct="false">静默返回上一次的结果</button>
+  <div class="explain">「execute 抛错 = isError」是框架契约;包一层 try/catch 反而可能把失败吞成假成功。fail loud 是默认姿态。</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="q">Q4. AI 在 GenerateOptions 里加了 <code>purpose: 'note-integration'</code>,类型检查会?</p>
+  <button data-correct="false">正常通过,purpose 接受任意字符串</button>
+  <button data-correct="true">报错——purpose 是闭 union,外部插件只能留空</button>
+  <button data-correct="false">通过但运行时被忽略</button>
+  <button data-correct="false">通过,并自动注册新 purpose</button>
+  <div class="explain"><code>'compaction' | 'session-title'</code> 是闭字面量 union,声明合并扩不了它。外部插件直调留空即可——这是「仓内扩展点 vs 仓外用法」的边界感。</div>
+</div>
+
+<h2>动手验证(12 分钟)</h2>
+<ol>
+  <li><code>cd ~/projects/mytool/dsh &amp;&amp; pnpm vitest run</code>——81 个测试全绿;打开 <a href="../../projects/mytool/dsh/src/service.ts">service.ts</a>,对照第 3 节四个部位逐一打勾。</li>
+  <li>写一个 3 行 patch 把 notes 行挂上 headless,跑 <code>--dump-config</code>,在最终清单里找到它——亲手走一遍第 2 节的装载。</li>
+  <li>(有 DEEPSEEK_API_KEY 时)在 <code>.scratch/dsh-port/notes-smoke</code> 目录跑一遍 save → find → integrate,观察 diff 卡与 <code>.bak</code>——第 4、5 节的所有部位各就各位的样子。</li>
+</ol>
+
+<h2>本课收获</h2>
+<ul>
+  <li>四条集成路径的选型依据;mytool 选插件路的理由(硬工具 + 软判断分层)。</li>
+  <li>插件验收的部位清单:装载、inject/Config/effect、defineTool 五面、llm 五件套。</li>
+  <li>平台约束撞上时的正确姿势:替换机制 + 文档化追记。</li>
+</ul>
+
+<h2>下一课:整合契约怎么 drill</h2>
+<p>本课解剖了<strong>结构</strong>。但 mytool 最难的部分不是结构,是「AI 整合笔记的质量怎么验收」。下一课以 <a href="../../projects/mytool/docs/specs/0002-integration-contract.md">specs/0002</a> 为标本,讲把 prose 约定 drill 成可测契约的方法——这是你作为「AI 验收者」的核心技能。</p>
+
+<div class="callout">
+<strong>推荐精读</strong>(10 分钟):<a href="../../projects/mytool/dsh/src/integrate/pipeline.ts">integrate/pipeline.ts</a> 全文——本课第 4、5、6 节的所有概念在这一个文件里同框。
+配套速查表:<a href="../reference/dsh-plugin-architecture-map.html">dsh 插件架构地图</a>(已增补「外部插件装载路径」一节)。
+</div>
+
+<footer>
+  <p>dsh 架构课程 · Lesson 0003 · 2026-08-17 · <a href="0002-what-is-a-patch.html">上一课</a> · <a href="0004-turn-prose-into-contracts.html">下一课</a></p>
+  <p>有任何不清楚的地方——随时回来问你的 agent 老师,它读过整个仓库的源码。</p>
+</footer>
+
+<script src="../assets/quiz.js"></script>
+
+</body>
+</html>

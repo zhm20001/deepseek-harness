@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>第 7 课 · 风格存在哪里？——design tokens 与载体的分离</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="lesson-header">
+  <div class="kicker">Lesson 0007 · 设计系统</div>
+  <h1>风格存在哪里？——文件类型只是载体，token 才是本体</h1>
+  <div class="meta">目标：15 分钟。搞清 palette（CSS Module）、diary（TS 模板字符串）、lessons（独立 CSS）三套"信纸风"为什么能长得一样，以及如何把它固化成不再互相抄袭的模板。</div>
+</header>
+
+<blockquote>
+你的原话：「为什么文件类型不同，却可以流传同一套风格？风格到底是由什么文件保存的？我又如何固化这种风格？」
+</blockquote>
+
+<h2>1. 先破直觉：风格不住在文件类型里</h2>
+<p>你可能默认「风格 = .css 文件」。但 diary 里根本没有 .css 文件——它的整套信纸风写在一个 <strong>TS 模板字符串</strong>里（<code>page.ts:25</code> 起），服务端拼 HTML 时内联成 <code>&lt;style&gt;</code> 标签。palette 的风格在 <strong>CSS Module</strong> 里，lessons 的在<strong>独立 stylesheet</strong> 里。三种运输方式，运送的是同一批货。</p>
+<p>这批货是什么？打开三个文件各看前 40 行，你会发现同一张清单：</p>
+<pre><code>palette.module.css:15  --pb-font: "Iowan Old Style"…"Songti SC"…Georgia, serif
+palette.module.css:18  --pb-board-bg: #fffff8        (纸色)
+palette.module.css:30  --pb-primary: #b0413e         (朱红)
+
+page.ts:25             --font: "Iowan Old Style"…"Songti SC"…Georgia, serif
+                       --page-bg / --primary / --chip-bg …（同名结构）
+
+course.css:9           --paper: #fdfcf9              (纸色)
+course.css:11          --accent: #8b2500             (朱红，略深)
+course.css:63          标题 "Songti SC"…Georgia, serif</code></pre>
+<p>答案：<strong>风格的本体是 CSS 自定义属性（design tokens）</strong>——字体栈、纸底色、近黑墨色、朱红强调色、米色细边框。它们是值，不是语法；CSS 变量在 <code>&lt;style&gt;</code> 标签、.css 文件、JS 注入里都同样活着。palette 的 <code>theme.ts</code> 进一步印证了这一点：它只切换 <code>data-theme</code> 属性，<strong>不含任何一个视觉值</strong>——风格 100% 在 CSS 层。</p>
+
+<h2>2. 为什么会"长得一样但谁也不认谁"</h2>
+<p>三个项目各自定义了一套<strong>前缀不同、语义相同</strong>的变量：<code>--pb-*</code>、裸 <code>--*</code>、<code>--paper/--ink/--accent</code>。"互相抄袭"时你抄的其实是隐式 token 值清单，而它从来没有正式的家。这是典型的<strong>隐式知识</strong>：每个项目都"知道"，但没有任何一处是权威定义。改一次朱红色，要人肉翻三个项目。</p>
+
+<h2>3. 固化：给 token 一个唯一权威源</h2>
+<p>做法与 dsh 的插件思想同构——把「组合结果」提取成「契约」：</p>
+<ol>
+  <li><strong>提取</strong>：把三处重复的值合并成一份 <code>design-tokens.css</code>，语义化命名（--paper, --ink, --accent, --font-serif, --rule, --radius）。已替你做好：<a href="../reference/design-tokens-paper-style.html">参考文档 · 纸感信纸风 Design Tokens</a>。</li>
+  <li><strong>别名</strong>：各项目只保留一层前缀别名，如 <code>--pb-paper: var(--paper)</code>，业务样式照旧消费前缀变量——迁移成本几乎为零。</li>
+  <li><strong>契约化</strong>：告诉未来的协作者（包括 AI）「新 webUI 一律先引这份 token 文件」。写进 workspace 级 AGENTS.md 一条即可，AI 就不会再翻旧代码去抄。</li>
+</ol>
+<p>判定标准很简单：<strong>任何一个十六进制色值或字体栈，全 workspace 只允许出现一次。</strong>出现第二次即是坏味道。</p>
+
+<h2>4. 检验你的理解</h2>
+<p>合上课件回答：<em>如果把 diary 的 page.ts 从 TS 模板字符串改成独立 .css 文件，它的视觉风格会变吗？为什么？</em></p>
+<p>答案要点：不会。风格由 CSS 变量的<strong>值</strong>决定，载体（内联/外链/构建产物）只影响加载方式与作用域。判断一个项目"风格存哪"，永远去找那批 <code>--</code> 开头的变量定义，而不是看文件后缀。</p>
+
+<blockquote><strong>后记（2026-08-31，发布现实改变答案）</strong>：插件决定开源，GitHub 上的仓库内容就是分发物——"开发期活指针"会让公开仓库带着指不进别人机器的 symlink。最终架构改为 <strong>vendor 副本制</strong>：插件仓库内提交带 sha256 生成头的副本，<code>sync-tokens.mjs</code> 一键同步，<code>--check</code> 在 push 前拦截过期。原则的修正版：<strong>真相只有一份，副本必须可校验、可再生，绝不手抄</strong>。本课的"指针 vs 复制"之争，答案是"复制，但必须是机器管理、机器校验的复制"。</blockquote>
+
+<h2>5. 深入阅读</h2>
+<p>主推资源：<a href="https://www.designtokens.org/">Design Tokens Community Group 规范</a> —— 业界正在把 token 变成跨工具的标准格式（JSON），你手做的 CSS 变量方案正是它的朴素版本。配合 <a href="https://m3.material.io/foundations/design-tokens/overview">Material Design 3 的 token 分层</a>（参考值 → 系统语义 → 组件别名）理解为什么 palette 要留 <code>--pb-*</code> 别名层。</p>
+
+<blockquote>有不清楚的地方，随时问你的老师（也就是我）。下一步可以做一节动手课：把 diary 迁移到共享 token 文件上，亲手体验「改一处、三处生效」。</blockquote>
+
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
