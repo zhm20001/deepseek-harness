@@ -50,6 +50,7 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 40 | write-back | **账本回写** | 运行期变更（树 API、自杀式 dispose）写回 `entry.options` 并序列化落盘；Include 用 tmp+rename 原子写、debounce 合并 | 文件 vendor/loader/src/index.ts 第 115、149 行、include/src/index.ts 第 289 行 |
 | 41 | `LocalRealm` / `GlobalRealm` | **行级门牌分区** | 行选项 `isolate` 给服务名生成隔离 symbol；同 `@标签` 共享一套——节点 3 的 dsh Scope 建在它上面 | 文件 vendor/loader/src/config/isolate.ts 第 26、49、60 行 |
 | 42 | HMR 三分支 | **商户热换的分流闸** | 框架文件 → 全量重启；插件文件 → 清两级模块缓存后重导出、delete+重挂、失败回滚；配置文件 → Include.refresh() 重读 diff | 文件 vendor/hmr/src/index.ts 第 129、251 行 |
+| 43 | capability seam 三角色 | **接缝上的三种铺子** | Definition 定契约、Provider 给实现、Consumer 只用不管；换 Provider 不动 Consumer。读插件先三问：provide 什么 / inject 什么 / on 什么 | 文件 docs/glossary.md（搜 seam）、docs/capability-seams.md；例 shell：dsh-shell / bash-local+bash-sandbox / tool-bash |
 
 ## 二、全景图（一张，字写全）
 
@@ -230,7 +231,6 @@ sequenceDiagram
 
 | 空位 | 对应节点 | 会回答什么 |
 |---|---|---|
-| 一套前台如何变成"每个 agent 一套"（dsh 的 Scope 建在 #21/#22/#23 上） | 节点 3 | 为什么换 provider 不惊动使用者 |
 | 广播名单如何变成有类型、可核对声明的事件；`@mode` 从哪来 | 节点 5 | 事件域怎么选 |
 | 第 7 步那个"内置行为"到底是谁、链在哪几处 | 节点 6、7 | turn / step 与工具流水线 |
 | 前台之外：招牌被谁写进磁盘、日志（session log）与这套登记板什么关系 | 节点 4 | 模型可见 ⟺ 可重建 |

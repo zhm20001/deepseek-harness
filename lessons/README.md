@@ -6,7 +6,9 @@
 
 这条路线是 `MISSION.md` 的第二条线（读源码掌握 agent 架构），与「个人项目集成」那条并列，按原深度走完。讲法约定见 `MISSION.md` 的 Constraints：新文件先过语言层与术语共识（[00-vocabulary.md](00-vocabulary.md)），引用源码写「文件 X 第 N 行」，能实跑的先实跑（[demos.md](demos.md)）。
 
-**当前进度**：节点 1 全部收尾（2026-09-27）——inject 对象形态、Config 校验链、类型声明合并已落盘进 [01-cordis-kernel.md](01-cordis-kernel.md)，两道自检题已给参考答案；[01-system-map.md](01-system-map.md) 重画全景图并新增三张时序图（生 / 营业 / 死与重生）。节点 2 机制已讲完并落盘（[02-loader.md](02-loader.md)）：patch 纯函数、`!!js` 插值与豁免、write-back、realm isolate、HMR 三分支，两段实跑见 [demos.md](demos.md)。下一站：节点 3（Scope 与 capability seam）——读完即可开始进插件正文（见节点 3 检验的设计）。
+**当前进度**：节点 1 全部收尾（2026-09-27）——inject 对象形态、Config 校验链、类型声明合并已落盘进 [01-cordis-kernel.md](01-cordis-kernel.md)，两道自检题已给参考答案；[01-system-map.md](01-system-map.md) 重画全景图并新增三张时序图（生 / 营业 / 死与重生）。节点 2 机制已讲完并落盘（[02-loader.md](02-loader.md)）：patch 纯函数、`!!js` 插值与豁免、write-back、realm isolate、HMR 三分支，两段实跑见 [demos.md](demos.md)。节点 3 已按新讲法讲完（[03-scope.md](03-scope.md)）。下一站：节点 4（Session 事件日志）——从这一节起正式进入插件正文。
+
+**讲法约定（2026-09-29 起）**：课件分两层——**逻辑层**（概念、比喻、推论，是必记的全部）与**源码层**（文件行号，只是回溯地址）。每课设"记住什么 / 不用记什么"栏位；填空与自测默认可选，卡住时再回溯历史课件，不做前置要求。
 
 主线不变量（贯穿所有节点，读代码时拿它们当探针）：
 
@@ -61,8 +63,7 @@
 - [ ] 源码：`packages/core/scope/src/index.ts`、`store.ts`（`ScopedLayers`）、`vendor/cordis/src/context.ts` 的 `isolate/extend/intercept`；`docs/capability-seams.md`、`docs/glossary.md#capability-seam`
 - [ ] 关键词：Service Definition / Provider / Consumer、per-agent 作用域注册
 - [ ] 占位句：一个 seam 缺一角就不成其为 seam，最常缺的是 ____。
-- [ ] 检验：在 `docs/capability-seams.md` 任取一行，说出三角色分别落在哪三个文件。
-- [ ] 检验 2（插件普查入口）：任选一个最小插件（如 `packages/todo`），当场拆出它的三角色、`declare module` 事件域与 provide 的服务名——这一步过了，节点 4 起的"插件正文"就没有门槛了。
+- [ ] 笔记：[03-scope.md](03-scope.md)（逻辑层讲法；占位句与自测可选）
 
 ### 4 Session 事件日志
 - [ ] 源码：`packages/core/session/src/types.ts`（`SessionEventMap` :281、`SESSION_FORMAT_VERSION` :89）、`surface.ts`、`index.ts`（`append` :720、`deriveMessages` :842、`fork` :1237）、`invariant.ts`；`packages/session/session-persistence/src/index.ts`、`session-persistence-jsonl/src/storage.ts`、`session-persistence-jsonl/src/index.ts`（`appendLines` :1324）、`session-format/src/chain.ts`
