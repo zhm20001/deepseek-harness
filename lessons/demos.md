@@ -1,4 +1,4 @@
-# 节点 1 的三段实跑（可复制重跑）
+# 实跑记录（可复制重跑）
 
 全部用仓库里真实的 cordis 跑过，不是设想。跑法：
 
@@ -105,3 +105,85 @@ await 场景('waterfall', 'waterfall', () => { ctx.on('demo', (p: any, next: any
 1. `bail` 配异步监听者是陷阱：不等结果，但 Promise 对象本身就是"表态值"，于是既拦住了后面的人，又没给喊话人答案。
 2. `waterfall` 忘记调 `next()` = **静默短路**，连内置行为都不发生。dsh 根规则里"必须调用 next()"就是针对它。
 3. dsh 的真实选型（`docs/architecture.md` 第 109 行）：`agent/pre-step`、`agent/request`、`llm/stream`、三个 `tools/*` 是 waterfall；`agent/turn-stopping` 是 serial 且没有 next。
+
+## 四、节点 2 之一：patch 是对配置行的纯函数改写（`/tmp/dsh-lesson2/patch-demo.mts`）
+
+```ts
+import { applyEntryPatches } from '/Users/zhm20001/deepseek-harness/vendor/include/src/index.ts'
+const warn = (msg: string, ...args: any[]) => console.log('  [warn]', msg, ...args)
+const base = [
+  { id: 'tools', name: 'tools-plugin', config: { allowed: ['fs'] } },
+  { id: 'grp', name: 'group', group: true, config: [{ id: 'inner', name: './inner.mjs', config: { level: 1 } }] },
+]
+const layer1 = [
+  { id: 'tools', config: { allowed: ['fs', 'shell'] } },
+  { id: 'grp', insert: [{ id: 'extra', name: './extra.mjs' }] },
+]
+const layer2 = [
+  { id: 'extra', disabled: true },
+  { id: 'tools', config: { allowed: ['fs', 'shell', 'web'] } },
+]
+console.log(JSON.stringify(applyEntryPatches(applyEntryPatches(base, layer1, warn), layer2, warn), null, 2))
+applyEntryPatches(base, [{ id: 'tools', name: 'wrong-name', disabled: true }], warn) // name 校验
+applyEntryPatches(base, [{ id: 'nope', disabled: true }], warn) // 找不到只告警
+```
+
+实测要点：多层叠加后 `tools.config` 是最后一层的三项；`extra`（第一层插入的行）被第二层成功 `disabled`——**insert 的行立刻进索引**；原始 `base` 完全没被改（structuredClone）；name 不匹配和 id 不存在都只告警不抛错。
+
+## 五、节点 2 之二：Loader + Include 全链（`/tmp/dsh-lesson2/loader-demo.mts`）
+
+```ts
+import { Context } from '/Users/zhm20001/deepseek-harness/vendor/cordis/lib/index.js'
+import Loader from '/Users/zhm20001/deepseek-harness/vendor/loader/src/index.ts'
+import Include from '/Users/zhm20001/deepseek-harness/vendor/include/src/index.ts'
+import { mkdtemp, writeFile, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+const dir = await mkdtemp(join(tmpdir(), 'dsh-lesson2-'))
+await writeFile(join(dir, 'hello.mjs'), `
+export function apply(ctx, config) { console.log('  [hello] 启动，config =', JSON.stringify(config)) }`)
+await writeFile(join(dir, 'cordis.yml'), [
+  '- id: hello', '  name: ./hello.mjs', '  config:',
+  `    user: !!js "process.env.USER ?? 'nobody'"`, '    level: 1', '',
+].join('\n'))
+
+const ctx: any = new Context()
+ctx.baseUrl = pathToFileURL(dir + '/').href
+await ctx.plugin(Loader, {})
+ctx.loader.builtins['include'] = Include          // 注册 cordis: 内建名（dsh 里由 bundle 完成）
+await ctx.loader.create({ name: 'cordis:include', config: { path: './cordis.yml' } }, null)
+await ctx.loader.await()
+
+const entry = [...ctx.loader.entries()].find((e: any) => e.options.id === 'hello')!
+const tree = [...ctx.loader.entries()].find((e: any) => e.options.name === 'cordis:include')!.subtree
+await tree.update('hello', { config: { user: 'zhm', level: 2 } })  // 树级 API 才带落盘
+await new Promise(r => setTimeout(r, 50))                          // write-back 是 debounce 的
+await tree.update('hello', { disabled: true })
+await new Promise(r => setTimeout(r, 50))
+console.log(await readFile(join(dir, 'cordis.yml'), 'utf8'))
+```
+
+实际输出（摘要）：
+
+```
+  [hello] 启动，config = {"user":"zhm20001","level":1}   ← !!js 现场求值（process.env.USER）
+1) 装载后：fiber 状态 = 2 （2 = ACTIVE）
+2) …
+  [hello] 启动，config = {"user":"zhm","level":2}        ← 配置变更 = dispose + 重跑代码体
+--- cordis.yml ---
+- id: hello
+  name: ./hello.mjs
+  disabled: true
+  config:
+    user: zhm
+    level: 2                                             ← !!js 表达式被整行替换后变为字面量
+```
+
+### 四个实跑坑（每个都对应一条机制）
+
+1. **两份 cordis 实例**：demo 引 `vendor/cordis/src/index.ts`、而 vendor 包的裸包名 `@deepseek-ai/cordis` 解析到 `lib/index.js`（tsx 还会把链接路径的 src 视为独立模块）——登记板/符号表各一份，`ctx.loader` 永远 undefined。**必须让 ctx 和插件解析到同一份实例**（demo 统一走 lib）。这就是 AGENTS.md"Source plane 与 artifact plane 不得混用"的运行期版本。
+2. **class 插件构造器在微任务里执行**：`ctx.plugin(Loader)` 同步返回，构造器里那次 `provide('loader')` 还没跑；`await ctx.plugin(...)` 之后服务才在。
+3. **Include 必须作为配置行挂载**：裸 `ctx.plugin(Include)` 的 fiber 没有 `entry` 标记，子树无法从根遍历（HMR 找 Include 就是靠 `entry.subtree`）。正确姿势：注册 `cordis:` 内建名后用 `tree.create`——与 dsh `mountRootInclude` 同一条路。
+4. **只有树级 API 才落盘**：`entry.update()` 只改内存；`EntryTree.create/remove/update` 末尾才调 `tree.write()`（`tree.ts:85,93,107`）。

@@ -6,7 +6,7 @@
 
 这条路线是 `MISSION.md` 的第二条线（读源码掌握 agent 架构），与「个人项目集成」那条并列，按原深度走完。讲法约定见 `MISSION.md` 的 Constraints：新文件先过语言层与术语共识（[00-vocabulary.md](00-vocabulary.md)），引用源码写「文件 X 第 N 行」，能实跑的先实跑（[demos.md](demos.md)）。
 
-**当前进度**：节点 1 的机制与五种 dispatch 已讲完并落盘；遗留两项——两道自检题未答（事件选型决策树、bail 短路三句因果），`inject` 的对象形态 / `Config` 校验 / TypeScript 声明合并未碰。
+**当前进度**：节点 1 全部收尾（2026-09-27）——inject 对象形态、Config 校验链、类型声明合并已落盘进 [01-cordis-kernel.md](01-cordis-kernel.md)，两道自检题已给参考答案；[01-system-map.md](01-system-map.md) 重画全景图并新增三张时序图（生 / 营业 / 死与重生）。节点 2 机制已讲完并落盘（[02-loader.md](02-loader.md)）：patch 纯函数、`!!js` 插值与豁免、write-back、realm isolate、HMR 三分支，两段实跑见 [demos.md](demos.md)。下一站：节点 3（Scope 与 capability seam）——读完即可开始进插件正文（见节点 3 检验的设计）。
 
 主线不变量（贯穿所有节点，读代码时拿它们当探针）：
 
@@ -53,14 +53,16 @@
 ### 2 Loader 与声明式组合
 - [ ] 源码：`vendor/loader/src/index.ts`、`config/entry.ts`+`tree.ts`+`group.ts`、`config/utils.ts`（`!!js` interpolate）、`vendor/include/src/index.ts`（`applyEntryPatches`）、`vendor/hmr/src/index.ts`
 - [ ] 关键词：config row / entry、patch by id、有序层叠加、realm `isolate`、write-back
-- [ ] 占位句：bundle 写入的东西仍可被上层改写，因为 ____；`!!js` 只允许出现在 ____ 字段。
+- [ ] 占位句：bundle 写入的东西仍可被上层改写，因为 ____；`!!js` 只允许出现在 ____ 字段。（参考答案见笔记）
 - [ ] 检验：走完 `docs/cordis-tutorial/index.md`，然后写一个 patch 禁掉某个插件，再解释它为什么不需要改代码。
+- [ ] 笔记：[02-loader.md](02-loader.md)；实跑见 [demos.md](demos.md) 第四、五节
 
 ### 3 Scope 与 capability seam
 - [ ] 源码：`packages/core/scope/src/index.ts`、`store.ts`（`ScopedLayers`）、`vendor/cordis/src/context.ts` 的 `isolate/extend/intercept`；`docs/capability-seams.md`、`docs/glossary.md#capability-seam`
 - [ ] 关键词：Service Definition / Provider / Consumer、per-agent 作用域注册
 - [ ] 占位句：一个 seam 缺一角就不成其为 seam，最常缺的是 ____。
 - [ ] 检验：在 `docs/capability-seams.md` 任取一行，说出三角色分别落在哪三个文件。
+- [ ] 检验 2（插件普查入口）：任选一个最小插件（如 `packages/todo`），当场拆出它的三角色、`declare module` 事件域与 provide 的服务名——这一步过了，节点 4 起的"插件正文"就没有门槛了。
 
 ### 4 Session 事件日志
 - [ ] 源码：`packages/core/session/src/types.ts`（`SessionEventMap` :281、`SESSION_FORMAT_VERSION` :89）、`surface.ts`、`index.ts`（`append` :720、`deriveMessages` :842、`fork` :1237）、`invariant.ts`；`packages/session/session-persistence/src/index.ts`、`session-persistence-jsonl/src/storage.ts`、`session-persistence-jsonl/src/index.ts`（`appendLines` :1324）、`session-format/src/chain.ts`

@@ -17,12 +17,13 @@ Cordis 一共 2696 行（`vendor/cordis/src/`，六个文件）。它是整个 h
 5. 每一次登记（提供、监听、effect）都记在**这次装载**的账上，所以卸载是逆序收回而不是崩溃或修补 → 这本账就是 `Fiber` →
 6. 要能力用**服务**（主动要），要插手用**事件**（被动被叫）；喊一声有五种规矩，由三问决定：等不等 / 要不要答案 / 谁能否决我。
 
-两处已纠正的误解，留着防止复发：
+三处已纠正的误解，留着防止复发：
 
 - 卸载不由 `ctx` 发起。`ctx` 是板 + 接待员，全程被动；发起方是 fiber 的 `dispose`，被调用的是**登记那一刻存下的撤销函数**。
 - 事件名单归 `EventsService` 所有（`_hooks`），fiber 只持有"我登记过哪些"的账。`Hook` 里存 `ctx` 是为了**过滤谁能听到**，不是把名单交给 fiber 管。
+- `internal/config` 在 schema 校验**之前**，不是之后（`fiber.ts:641-643`：先 waterfall 再 validate）；FAILED 也不是盖上的章，是 `_error` 非空时读出的状态（`fiber.ts:576`）。
 
-未答的自检题：事件选型决策树（`tools/rename-display` 该选哪个 mode、错选 waterfall 会怎样）、bail 为何短路（三句因果）。
+两道自检题的参考答案见下文〔自检题参考答案〕（2026-09-27）。
 
 ## 源码地图（按读的顺序）
 
@@ -42,7 +43,7 @@ Cordis 一共 2696 行（`vendor/cordis/src/`，六个文件）。它是整个 h
 1. **拿到 ctx**：`new Context()`（`context.ts:71`）先建 isolate/intercept 两张原型链上的表，然后 `new Proxy(this, ReflectService.handler)` 并 `return self`——你手上的 `ctx` 从来不是普通对象。root fiber（`uid === 0`）建好后 `_disposables.clear()`（`:82`），四个内置服务挂它名下。
 2. **提交插件**：`ctx.plugin(P, cfg)`（`registry.ts:316`）把插件归一成"可执行 callback"（`resolve()` `:222`：函数本身，或对象的 `apply`），当前 fiber 先 `assertActive()`，然后按 callback 找/建 `Plugin.Runtime`，再 `new Fiber(...)`。同一个插件被挂两次共享一个 Runtime，但各有 Fiber。返回值 `wrapped` 挂了一个 `then`（`:331`），所以 `await ctx.plugin(...)` 等的是"加载完成"而不是"函数返回"。
 3. **等依赖**：`FiberState`（`fiber.ts:147`）= `PENDING → LOADING → ACTIVE → FAILED / UNLOADING → DISPOSED`。`inject`（`registry.ts:19`、`Inject.resolve` `:71`）声明需要哪些服务名；不齐就停在 `PENDING`，齐了才跑插件体，服务被撤销时回到非 `ACTIVE`，重新出现时**重跑**插件体。所以"加载顺序"这个概念在 Cordis 里不存在，只有"需求是否满足"。
-4. **配配置**：`Config` 是 Standard Schema，先校验再过 `internal/config` waterfall（`events.ts:339`），Loader 就是在这一步插进 YAML 求值结果（节点 2）。
+4. **配配置**：先过 `internal/config` waterfall（`fiber.ts:641`；Loader 就是在这里插进 YAML 求值结果，`loader/src/index.ts:104`），再用 `runtime.Config`（Standard Schema，`fiber.ts:50`）校验。校验失败记 `_error`（`fiber.ts:659-664`），此后 `_getState()` 读作 FAILED（`fiber.ts:576`）——FAILED 是推导态，不是一次独立转移。
 5. **注册东西**：插件体里调的每个 `ctx.effect()` / `ctx.on()` / `new Service(ctx, name)` 都把 disposer 收进当前 fiber 的 `_disposables`；子 fiber 的 dispose 本身是父 fiber 的一个 effect（`fiber.ts:265`），所以卸载是自上而下的一次遍历，不靠纪律。
 6. **状态外泄**：状态变化发 `internal/status`，但只在跨过 `ACTIVE` 边界时通知（`fiber.ts:582-589`）——依赖图只关心"可用/不可用"。
 
@@ -73,6 +74,44 @@ Cordis 一共 2696 行（`vendor/cordis/src/`，六个文件）。它是整个 h
 - `intercept(name, config)` `:139`：给某服务的配置追加一层，`Service[symbols.resolveConfig]`（`service.ts:86`）从根到叶收集后按 `Config.merge` 合并。
 
 dsh 的 per-agent scope、preset、按服务覆写配置，全都建在这三个方法上。
+
+## 收尾：申请表的完整读法（2026-09-27）
+
+### inject 的两种形态
+
+`Inject`（`registry.ts:19`）是数组或对象：数组 `['llm']` 只要名字；对象 `{ llm: { model: '...' } }` 给每个名字附一份**拦截配置**。两者都被 `Inject.resolve`（`registry.ts:71`）归一成"名字 → 配置或 null"的映射；类插件沿原型链合并继承来的 inject（`registry.ts:77`）。
+
+落点在 fiber 构造器（`fiber.ts:238-245`）：对象形态的配置值写进**这张登记条自己前台**的 intercept 表——含义是"我需要 llm，而且在我这套前台里，llm 的配置多一层 { model }"。真正生效要等招牌被使用时：`Service[symbols.resolveConfig]`（`service.ts:86`）从根到叶收集 intercept，用 `Config.merge` 或浅合并叠起来（`schemastery/src/index.ts:805` 起）。
+
+三个等价入口：插件静态字段 `inject`；`ctx.inject(deps, callback)`（= `ctx.plugin({ inject, apply: callback })`，`registry.ts:300`）；`@Inject(name, config)` 装饰器（用在类上并进静态 inject，用在方法上把该方法调用推迟到服务可用，`registry.ts:37-60`）。
+
+### Config 的一生
+
+- 装载：`internal/config` waterfall（Loader 插入 YAML 求值）→ `runtime.Config['~standard'].validate`（Standard Schema，`fiber.ts:50-53`）→ 失败记 `_error`，状态读作 FAILED，`await ctx.plugin()` 时抛出。
+- 更新：`fiber.update()` 先解析并校验新配置，再过 `internal/update` waterfall——监听者不调 `next()` 即否决这次重启，Loader 在这里写回文件（`fiber.ts:736-753`）。
+- 拦截叠加：各层 intercept 按"离根近的先合并"叠进服务配置（`service.ts:86-102`）。
+
+### `ctx.tools` 的类型从哪来（三级声明合并）
+
+1. 框架内部：`registry.ts:164` 用 `declare module './context.ts'` 把 `ctx.plugin` / `ctx.inject` 补进 Context 接口。
+2. dsh 包：各服务包自己合并——`packages/core/tools/src/index.ts:137` 加 `tools: ToolRuntime`；`packages/llm/llm/src/index.ts:57` 加 `llm: LlmRuntime`，并把 `'llm/stream'` 写进 `Events`（`@mode waterfall` 记在 JSDoc 上）。
+3. 拦截配置的类型化：`Service<T>` 声明幽灵字段 `[symbols.config]: T`（`service.ts:27`），`InjectKey`（`registry.ts:22-24`）只挑带这个字段的服务名——所以 `@Inject('llm', { ... })` 的第二参有类型检查，给没声明配置类型的服务写拦截配置编译不过。
+
+## 自检题参考答案（2026-09-27）
+
+### 决策树：给事件选 mode 的三问
+
+1. **要不要答案？** 要"层层包装一条链"（每个监听者包住后面的行为）→ waterfall；要"第一个表态就停"（同步）→ bail；要"按序等回复、有人表态即停"（异步）→ serial。
+2. 不要答案：**那要不要等大家跑完？** 调用方必须等监听者完成才能继续 → parallel；发完就忘 → emit。
+3. 反向检查：**这件事允不允许被否决？** 只有"监听者构成管道"的事件才允许否决；纯通知绝不能选 waterfall。
+
+`tools/rename-display`（假想事件）：改名是纯通知——改名的事实已在工具登记处发生，UI 只是被告知；没人能"否决一次已经发生的改名"，也不需要答案 → **emit**。错选 waterfall 会漏什么：任何监听者忘了调 `next()`，这次改名就"没发生"，而真源里它已经改了——UI 与真源从此不一致；并且把纯通知做成链，等于邀请未来的监听者去否决不该否决的事。选 parallel 只是无谓等待（调用方挂起等 UI 跑完），不算错但没必要。超纲一步：显示名本属工具声明的静态呈现层（节点 7 的 presentation），只有"运行期改名"才需要事件。
+
+### bail 为何短路：三句因果
+
+1. `bail` 按名单顺序同步调用监听者，每个返回值立刻交给 `isBailed` 判定（`events.ts:13`）。
+2. 甲是 async 函数：同步返回的已经是 Promise 对象；对象不是 null / false / undefined，所以**算表态**。
+3. 表态成立 → 循环停在甲之后 → 乙从未被叫；喊话人拿到的是那个尚未兑现的 Promise——既拦住了后面的人，又没给出答案。
 
 ## 为什么这套框架适合做 agent harness
 
