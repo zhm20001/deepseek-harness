@@ -70,6 +70,9 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 60 | 中立词表（消息 / 流 / 统一失败） | **口岸世界语** | 口岸内侧只讲消息词表与流词表，错误统一带稳定代码；厂商方言挡在口岸外 | 文件 packages/llm/llm/src/types.ts；docs/cookbook/adding-an-llm-adapter.md |
 | 61 | LLM adapter | **翻译官** | 继承基类、核心一个 stream 方法；注册是 effect、一条路线一个翻译官；参考实现直连与包 SDK 各一 | 文件 packages/llm/llm/src/index.ts 第 396 行；packages/llm/llm-deepseek/src/adapter.ts |
 | 62 | prepareCall 票根 | **验票台** | 验票时定下厂商默认值、窗口大小、系统提示与工具增补的处理方式；loop 只认票根不认厂商名 | 文件 packages/llm/llm/src/index.ts 第 278 行；packages/core/agent-loop/src/agent.ts 第 547 行 |
+| 63 | 执行世界三件套 | **同一台机器的三张执照** | fs + subprocess + sandbox 描述同一个世界、成套换装；bash 与 PTY 骑在 subprocess 上 | 文件 packages/subprocess/subprocess/src/index.ts 第 95 行；packages/fs/fs/src/index.ts 头注 |
+| 64 | argv 包装（confine） | **笼子是外壳不是监工** | 先把命令裹上笼子程序和规则再开跑；策略按每次调用携带；没有笼子宁可拒绝开跑 | 文件 packages/sandbox/sandbox/src/index.ts 第 177、125 行 |
+| 65 | fs 意图闸（write/edit-intent） | **动手前的小闸** | 单槽瀑布：第一个亮出意图的监听者独占决定；动手后 fs/observed 广播记账 | 文件 packages/fs/fs/src/index.ts 第 59、67、77 行 |
 
 ## 二、全景图（一张，字写全）
 
