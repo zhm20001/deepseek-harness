@@ -58,6 +58,9 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 48 | 事件三域（session / agent / capability） | **三个广播频道** | 按事件属于谁分：对话记录→session；活体 agent→agent；能力本身→capability；全部按作用域话筒路由，向上可见 | 文件 docs/architecture.md 第 109 行；packages/core/agent/src/runtime-types.ts |
 | 49 | 通知与闸门（emit vs waterfall / serial） | **通报与闸口** | emit 发完即走、不可否决；waterfall 层层表态、须调 next() 放行；serial 排队逐个表态、无 next() | 文件 packages/core/agent/src/dispatch.ts 第 63-81 行；runtime-types.ts 各事件 @mode |
 | 50 | 三道闸（pre-step / request / turn-stopping） | **开跑前 / 发车前 / 收工前** | pre-step 否决或换材料；request 只换配置不碰消息；turn-stopping 反对 = steer 续工单；agent/created 为第四道开业闸（serial，回滚） | 文件 packages/core/agent/src/runtime-types.ts 第 320、337、381、261 行 |
+| 51 | turn / step（回合 / 步） | **工单与工序** | turn = 从认领一批输入到没活儿收工，结束原因一并入档；step = 一次模型调用 + 它要求的全部工具执行；一个回合常有多步 | 文件 packages/core/agent-loop/src/agent.ts 第 296、398 行 |
+| 52 | durable inbox / claim | **排队台账** | 收件箱分 next-turn / next-step 两格，每次进出都记一条事件（断电不丢队）；claim = 开跑前把整批从队列拿走 | 文件 packages/core/agent-loop/src/inbox.ts 第 109、227 行 |
+| 53 | 请求 = 日志派生 + 冻结 | **先验票、后记账、再发车** | 请求 = 配置 + 从日志誊出并冻结的消息 + 工具清单；loop 不自存对话，重放日志即可复现请求 | 文件 packages/core/agent-loop/src/agent.ts 第 547、599 行 |
 
 ## 二、全景图（一张，字写全）
 
