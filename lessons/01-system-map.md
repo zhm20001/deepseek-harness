@@ -55,6 +55,9 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 45 | `SessionEventMap` + `ignorable` 角标 | **档案词表与"可跳过"角标** | 插件用声明合并添词；读方遇到不认识的词，无角标整卷拒读，有角标可跳过 | 文件 packages/core/session/src/types.ts 第 281、511 行；known-event-types.ts |
 | 46 | 派生消息（`deriveMessages` + `SurfaceOp` 顶替） | **按档案誊一份给模型（上镜名单）** | 只有五类表面事件上镜；压缩 = 追加一条摘要并标明顶替谁，原文不动 | 文件 packages/core/session/src/index.ts 第 860 行；types.ts 第 439、462 行 |
 | 47 | `SESSION_FORMAT_VERSION` 与相邻迁移 | **换柜不撕纸** | 版本号单调递增（现 4）；升级产出新版本文件，旧代原样封存；读取沿升级链翻译 | 文件 packages/core/session/src/types.ts 第 89 行；packages/session/session-format-v0-to-v1 … v3-to-v4 |
+| 48 | 事件三域（session / agent / capability） | **三个广播频道** | 按事件属于谁分：对话记录→session；活体 agent→agent；能力本身→capability；全部按作用域话筒路由，向上可见 | 文件 docs/architecture.md 第 109 行；packages/core/agent/src/runtime-types.ts |
+| 49 | 通知与闸门（emit vs waterfall / serial） | **通报与闸口** | emit 发完即走、不可否决；waterfall 层层表态、须调 next() 放行；serial 排队逐个表态、无 next() | 文件 packages/core/agent/src/dispatch.ts 第 63-81 行；runtime-types.ts 各事件 @mode |
+| 50 | 三道闸（pre-step / request / turn-stopping） | **开跑前 / 发车前 / 收工前** | pre-step 否决或换材料；request 只换配置不碰消息；turn-stopping 反对 = steer 续工单；agent/created 为第四道开业闸（serial，回滚） | 文件 packages/core/agent/src/runtime-types.ts 第 320、337、381、261 行 |
 
 ## 二、全景图（一张，字写全）
 
