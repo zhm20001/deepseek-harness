@@ -64,6 +64,9 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 54 | 三道工具闸（pre-execute / execute / post-execute） | **安检三段** | 开跑前门卫四种表态（放行/拦下/取消/问人）；执行中包场护栏（超时重试）；跑完后验收（收下/退货） | 文件 packages/core/tools/src/index.ts 第 607、731 行；docs/tool-execution-pipeline.md |
 | 55 | 单调门卫（ToolGuard） | **只会拦的保安** | 只回答"拦"或"不表态"，永远说不出"放行"——排队顺序翻不了案 | 文件 packages/core/tools/src/index.ts 第 731 行 |
 | 56 | 审批接缝（`ctx.approval`） | **问人的传话筒** | ask 决定沿作用域话筒递给能拍板的前端（终端/网页/SDK）；答不了算拦；问答都入档 | 文件 packages/interaction/user-approval/src/index.ts 第 150、282 行 |
+| 57 | 段落拼装（section + 中央排号） | **各报各的编号段落** | 系统提示 = 各插件带唯一名字、统一分配编号的段落排队拼接；稳定内容在前、本机易变在后 | 文件 packages/core/system-prompt/src/index.ts 第 53、125 行 |
+| 58 | 缓存前缀与运行时快照 | **开头不动省钱，易变走后门** | 逐字节相同的开头可复用模型侧缓存；每步都变的运行时上下文作为用户角色快照消息追加 | 文件 packages/core/system-prompt/src/index.ts 第 303 行；packages/context/* |
+| 59 | agent.inject() | **挂来源标记的插话** | 文件变更、技能内容、定时通知等经用户消息通道入档上镜，靠 source 区分来源 | 文件 packages/core/session/src/types.ts 第 308 行 |
 
 ## 二、全景图（一张，字写全）
 
