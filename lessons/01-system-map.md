@@ -73,6 +73,9 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 63 | 执行世界三件套 | **同一台机器的三张执照** | fs + subprocess + sandbox 描述同一个世界、成套换装；bash 与 PTY 骑在 subprocess 上 | 文件 packages/subprocess/subprocess/src/index.ts 第 95 行；packages/fs/fs/src/index.ts 头注 |
 | 64 | argv 包装（confine） | **笼子是外壳不是监工** | 先把命令裹上笼子程序和规则再开跑；策略按每次调用携带；没有笼子宁可拒绝开跑 | 文件 packages/sandbox/sandbox/src/index.ts 第 177、125 行 |
 | 65 | fs 意图闸（write/edit-intent） | **动手前的小闸** | 单槽瀑布：第一个亮出意图的监听者独占决定；动手后 fs/observed 广播记账 | 文件 packages/fs/fs/src/index.ts 第 59、67、77 行 |
+| 66 | subagent 名册 | **按名点将** | ctx.subagents 名册制：Provider 报名、调用者按名选；一次性与可续派两种分身；传话不暴露分身居所 | 文件 packages/subagent/subagent/src/index.ts 头注；tool-subagent/src/index.ts 第 45 行 |
+| 67 | jobs 登记处 | **后台号牌台** | 后台任务统一登记：号牌 + 有界环形输出（模型书签与旁观者偏移互不打扰）；活得比插件久 | 文件 packages/jobs/jobs/src/index.ts 头注 |
+| 68 | workflow 剧本 | **只播报的导演** | 编排脚本喊阶段/日志/分身起止，全是不可否决的 emit；观察与控制分家 | 文件 packages/workflow/workflow/src/index.ts 第 2 行 |
 
 ## 二、全景图（一张，字写全）
 
