@@ -79,6 +79,7 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 69 | profile（有序 bundles + 薄改） | **装修方案** | 一份组合单：有序列出各 bundle 的改单，再叠自己与用户的薄页；树仍是数据 | 文件 packages/boot/app-boot/src/profile.ts:1-22 |
 | 70 | 层序（bundle → profile → home → --patch） | **后贴的改先贴的** | 四层叠加、后来者居上；组合与 dump 共用 02 课同一把纯函数尺子 | 文件 packages/boot/app-boot/src/profile.ts 第 710 行 |
 | 71 | 发射白名单 | **只有物业能点火** | 只有 dsh profile 启动器可启动受支持的 Node 应用；SDK 只能选方案名+有序薄改 | 文件根 AGENTS.md（Application launch） |
+| 72 | 三板斧（复盘） | **物业的三条家规** | 扩展点不改内核；显式化不藏默认（请求→规格）；当场拒绝不留悬案（+追加档案）；branded ids 防伪 | 文件根 AGENTS.md 第 137-143 行；docs/defensive-patterns.md |
 
 ## 二、全景图（一张，字写全）
 
