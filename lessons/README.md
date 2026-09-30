@@ -6,9 +6,9 @@
 
 这条路线是 `MISSION.md` 的第二条线（读源码掌握 agent 架构），与「个人项目集成」那条并列，按原深度走完。讲法约定见 `MISSION.md` 的 Constraints：新文件先过语言层与术语共识（[00-vocabulary.md](00-vocabulary.md)），引用源码写「文件 X 第 N 行」，能实跑的先实跑（[demos.md](demos.md)）。
 
-**当前进度**：节点 1 全部收尾（2026-09-27）——inject 对象形态、Config 校验链、类型声明合并已落盘进 [01-cordis-kernel.md](01-cordis-kernel.md)，两道自检题已给参考答案；[01-system-map.md](01-system-map.md) 重画全景图并新增三张时序图（生 / 营业 / 死与重生）。节点 2 机制已讲完并落盘（[02-loader.md](02-loader.md)）：patch 纯函数、`!!js` 插值与豁免、write-back、realm isolate、HMR 三分支，两段实跑见 [demos.md](demos.md)。节点 3 已按新讲法讲完（[03-scope.md](03-scope.md)）。下一站：节点 4（Session 事件日志）——从这一节起正式进入插件正文。
+**当前进度**：节点 1 全部收尾（2026-09-27）——inject 对象形态、Config 校验链、类型声明合并已落盘进 [01-cordis-kernel.md](01-cordis-kernel.md)，两道自检题已给参考答案；[01-system-map.md](01-system-map.md) 重画全景图并新增三张时序图（生 / 营业 / 死与重生）。节点 2 机制已讲完并落盘（[02-loader.md](02-loader.md)）：patch 纯函数、`!!js` 插值与豁免、write-back、realm isolate、HMR 三分支，两段实跑见 [demos.md](demos.md)。节点 3 已按新讲法讲完（[03-scope.md](03-scope.md)）。节点 4 已按规约讲完（[主线课/04-session事件日志.md](主线课/04-session事件日志.md)）：append-only 流水账、模型可见 ⟺ 可重建、事件词表与 ignorable、版本迁移只加不改——从这一节起进入插件正文。下一站：节点 5（Agent 抽象与事件域）。
 
-**讲法约定（2026-09-29 起）**：课件分两层——**逻辑层**（概念、比喻、推论，是必记的全部）与**源码层**（文件行号，只是回溯地址）。规约全文、文档模板与生成流程见 **[主线课/00-课程规约.md](主线课/00-课程规约.md)**；统一课程文档收在 [主线课/](主线课/)（01–03 已按规约重生成，后续课程骨架见 [主线课/90-后续课程骨架.md](主线课/90-后续课程骨架.md)）。填空与自测默认可选，卡住时回溯本目录的原始精读版。
+**讲法约定（2026-09-29 起）**：课件分两层——**逻辑层**（概念、比喻、推论，是必记的全部）与**源码层**（文件行号，只是回溯地址）。规约全文、文档模板与生成流程见 **[主线课/00-课程规约.md](主线课/00-课程规约.md)**；统一课程文档收在 [主线课/](主线课/)（01–04，后续课程骨架见 [主线课/90-后续课程骨架.md](主线课/90-后续课程骨架.md)）。填空与自测默认可选，卡住时回溯本目录的原始精读版。
 
 主线不变量（贯穿所有节点，读代码时拿它们当探针）：
 
@@ -70,6 +70,7 @@
 - [ ] 关键词：append-only、sealed generation、相邻 `vN → vN+1` 迁移、projection seam、pure message projection
 - [ ] 占位句："model-visible ⟺ logged" 由 ____ 强制；进程在 settlement 前硬挂会留下 ____。
 - [ ] 检验：读 `packages/core/session/tests/session.spec.ts` + `packages/core/agent-loop/src/invariant.ts:40`，说出请求历史为何必然可重建。
+- [ ] 笔记：[主线课/04-session事件日志.md](主线课/04-session事件日志.md)（逻辑层讲法；占位句与自测可选）
 
 ### 5 Agent 抽象与事件域
 - [ ] 源码：`packages/core/agent/src/types.ts`、`dispatch.ts`（`agentEvents` :107、`agentCarrier` :94）、`index.ts`（`AgentRegistry` :245、initiator stack）；`docs/event-producer-consumer.md`、`docs/agent-lifecycle.md`

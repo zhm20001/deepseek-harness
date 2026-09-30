@@ -4,7 +4,7 @@
 
 ## 一、只用一座比喻：一栋写字楼
 
-Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商户**；能力不是"对象"，是商户**挂出的招牌**；事件不是"回调"，是**楼内广播和会签单**。全表只围绕这一座楼。
+Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商户**；能力不是"对象"，是商户**挂出的招牌**；事件不是"回调"，是**楼内广播和会签单**；日志不是"聊天记录"，是楼里只进不改的**档案室**。全表只围绕这一座楼。
 
 | # | 术语（代码里的真名） | 这座楼里的比喻 | 一句话准确定义 | 在哪个文件 |
 |---|---|---|---|---|
@@ -51,6 +51,10 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 41 | `LocalRealm` / `GlobalRealm` | **行级门牌分区** | 行选项 `isolate` 给服务名生成隔离 symbol；同 `@标签` 共享一套——节点 3 的 dsh Scope 建在它上面 | 文件 vendor/loader/src/config/isolate.ts 第 26、49、60 行 |
 | 42 | HMR 三分支 | **商户热换的分流闸** | 框架文件 → 全量重启；插件文件 → 清两级模块缓存后重导出、delete+重挂、失败回滚；配置文件 → Include.refresh() 重读 diff | 文件 vendor/hmr/src/index.ts 第 129、251 行 |
 | 43 | capability seam 三角色 | **接缝上的三种铺子** | Definition 定契约、Provider 给实现、Consumer 只用不管；换 Provider 不动 Consumer。读插件先三问：provide 什么 / inject 什么 / on 什么 | 文件 docs/glossary.md（搜 seam）、docs/capability-seams.md；例 shell：dsh-shell / bash-local+bash-sandbox / tool-bash |
+| 44 | session 事件日志（`Session` 私有数组 + `append`） | **档案室** | 所有插件共享的 append-only 流水账；每条记录带连续序号 `seq` 与时间；模型聊天记录由它派生 | 文件 packages/core/session/src/index.ts 第 446、722 行 |
+| 45 | `SessionEventMap` + `ignorable` 角标 | **档案词表与"可跳过"角标** | 插件用声明合并添词；读方遇到不认识的词，无角标整卷拒读，有角标可跳过 | 文件 packages/core/session/src/types.ts 第 281、511 行；known-event-types.ts |
+| 46 | 派生消息（`deriveMessages` + `SurfaceOp` 顶替） | **按档案誊一份给模型（上镜名单）** | 只有五类表面事件上镜；压缩 = 追加一条摘要并标明顶替谁，原文不动 | 文件 packages/core/session/src/index.ts 第 860 行；types.ts 第 439、462 行 |
+| 47 | `SESSION_FORMAT_VERSION` 与相邻迁移 | **换柜不撕纸** | 版本号单调递增（现 4）；升级产出新版本文件，旧代原样封存；读取沿升级链翻译 | 文件 packages/core/session/src/types.ts 第 89 行；packages/session/session-format-v0-to-v1 … v3-to-v4 |
 
 ## 二、全景图（一张，字写全）
 
