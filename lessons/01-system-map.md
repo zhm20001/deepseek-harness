@@ -76,6 +76,9 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 66 | subagent 名册 | **按名点将** | ctx.subagents 名册制：Provider 报名、调用者按名选；一次性与可续派两种分身；传话不暴露分身居所 | 文件 packages/subagent/subagent/src/index.ts 头注；tool-subagent/src/index.ts 第 45 行 |
 | 67 | jobs 登记处 | **后台号牌台** | 后台任务统一登记：号牌 + 有界环形输出（模型书签与旁观者偏移互不打扰）；活得比插件久 | 文件 packages/jobs/jobs/src/index.ts 头注 |
 | 68 | workflow 剧本 | **只播报的导演** | 编排脚本喊阶段/日志/分身起止，全是不可否决的 emit；观察与控制分家 | 文件 packages/workflow/workflow/src/index.ts 第 2 行 |
+| 69 | profile（有序 bundles + 薄改） | **装修方案** | 一份组合单：有序列出各 bundle 的改单，再叠自己与用户的薄页；树仍是数据 | 文件 packages/boot/app-boot/src/profile.ts:1-22 |
+| 70 | 层序（bundle → profile → home → --patch） | **后贴的改先贴的** | 四层叠加、后来者居上；组合与 dump 共用 02 课同一把纯函数尺子 | 文件 packages/boot/app-boot/src/profile.ts 第 710 行 |
+| 71 | 发射白名单 | **只有物业能点火** | 只有 dsh profile 启动器可启动受支持的 Node 应用；SDK 只能选方案名+有序薄改 | 文件根 AGENTS.md（Application launch） |
 
 ## 二、全景图（一张，字写全）
 
