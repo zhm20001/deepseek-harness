@@ -6,9 +6,9 @@
 
 这条路线是 `MISSION.md` 的第二条线（读源码掌握 agent 架构），与「个人项目集成」那条并列，按原深度走完。讲法约定见 `MISSION.md` 的 Constraints：新文件先过语言层与术语共识（[00-vocabulary.md](00-vocabulary.md)），引用源码写「文件 X 第 N 行」，能实跑的先实跑（[demos.md](demos.md)）。
 
-**当前进度**：节点 1 全部收尾（2026-09-27）——inject 对象形态、Config 校验链、类型声明合并已落盘进 [01-cordis-kernel.md](01-cordis-kernel.md)，两道自检题已给参考答案；[01-system-map.md](01-system-map.md) 重画全景图并新增三张时序图（生 / 营业 / 死与重生）。节点 2 机制已讲完并落盘（[02-loader.md](02-loader.md)）：patch 纯函数、`!!js` 插值与豁免、write-back、realm isolate、HMR 三分支，两段实跑见 [demos.md](demos.md)。节点 3 已按新讲法讲完（[03-scope.md](03-scope.md)）。节点 4 已按规约讲完（[主线课/04-session事件日志.md](主线课/04-session事件日志.md)）：append-only 流水账、模型可见 ⟺ 可重建、事件词表与 ignorable、版本迁移只加不改。节点 5 已按规约讲完（[主线课/05-agent事件域.md](主线课/05-agent事件域.md)）：事件三域、通知与闸门、三道闸（pre-step / request / turn-stopping）。节点 6 已按规约讲完（[主线课/06-agent-loop状态机.md](主线课/06-agent-loop状态机.md)）：turn/step、收件箱在日志里、请求从日志现算并冻结、取消与重试的落点。节点 7 已按规约讲完（[主线课/07-tools执行流水线.md](主线课/07-tools执行流水线.md)）：先记账再动手、三道工具闸、审批与单调门卫、结果先冻结再入档。节点 8 已按规约讲完（[主线课/08-prompt组装与上下文工程.md](主线课/08-prompt组装与上下文工程.md)）：段落拼装与中央排号、缓存前缀、空渲染清空一切、上下文工程走窄门。下一站：节点 9（LLM adapter）。
+**当前进度**：节点 1 全部收尾（2026-09-27）——inject 对象形态、Config 校验链、类型声明合并已落盘进 [01-cordis-kernel.md](01-cordis-kernel.md)，两道自检题已给参考答案；[01-system-map.md](01-system-map.md) 重画全景图并新增三张时序图（生 / 营业 / 死与重生）。节点 2 机制已讲完并落盘（[02-loader.md](02-loader.md)）：patch 纯函数、`!!js` 插值与豁免、write-back、realm isolate、HMR 三分支，两段实跑见 [demos.md](demos.md)。节点 3 已按新讲法讲完（[03-scope.md](03-scope.md)）。节点 4 已按规约讲完（[主线课/04-session事件日志.md](主线课/04-session事件日志.md)）：append-only 流水账、模型可见 ⟺ 可重建、事件词表与 ignorable、版本迁移只加不改。节点 5 已按规约讲完（[主线课/05-agent事件域.md](主线课/05-agent事件域.md)）：事件三域、通知与闸门、三道闸（pre-step / request / turn-stopping）。节点 6 已按规约讲完（[主线课/06-agent-loop状态机.md](主线课/06-agent-loop状态机.md)）：turn/step、收件箱在日志里、请求从日志现算并冻结、取消与重试的落点。节点 7 已按规约讲完（[主线课/07-tools执行流水线.md](主线课/07-tools执行流水线.md)）：先记账再动手、三道工具闸、审批与单调门卫、结果先冻结再入档。节点 8 已按规约讲完（[主线课/08-prompt组装与上下文工程.md](主线课/08-prompt组装与上下文工程.md)）：段落拼装与中央排号、缓存前缀、空渲染清空一切、上下文工程走窄门。节点 9 已按规约讲完（[主线课/09-llm-adapter.md](主线课/09-llm-adapter.md)）：中立词表、adapter 只做翻译、prepareCall 票根、换厂商的契约清单。下一站：节点 10（执行世界）。
 
-**讲法约定（2026-09-29 起）**：课件分两层——**逻辑层**（概念、比喻、推论，是必记的全部）与**源码层**（文件行号，只是回溯地址）。规约全文、文档模板与生成流程见 **[主线课/00-课程规约.md](主线课/00-课程规约.md)**；统一课程文档收在 [主线课/](主线课/)（01–08，后续课程骨架见 [主线课/90-后续课程骨架.md](主线课/90-后续课程骨架.md)）。填空与自测默认可选，卡住时回溯本目录的原始精读版。
+**讲法约定（2026-09-29 起）**：课件分两层——**逻辑层**（概念、比喻、推论，是必记的全部）与**源码层**（文件行号，只是回溯地址）。规约全文、文档模板与生成流程见 **[主线课/00-课程规约.md](主线课/00-课程规约.md)**；统一课程文档收在 [主线课/](主线课/)（01–09，后续课程骨架见 [主线课/90-后续课程骨架.md](主线课/90-后续课程骨架.md)）。填空与自测默认可选，卡住时回溯本目录的原始精读版。
 
 主线不变量（贯穿所有节点，读代码时拿它们当探针）：
 
@@ -105,6 +105,7 @@
 - [ ] 关键词：消息与流词表、`prepareCall` capability、token/KV-cache 计费
 - [ ] 占位句：换 provider 不改 loop，前提是 provider 满足 ____。
 - [ ] 检验：读一个 provider 的 e2e 断言（`pnpm run test:e2e` 无 key 自跳过），说出它测的是词表还是 adapter 行为。
+- [ ] 笔记：[主线课/09-llm-adapter.md](主线课/09-llm-adapter.md)（逻辑层讲法；占位句与自测可选）
 
 ### 10 执行世界
 - [ ] 源码：`packages/fs/fs/src/index.ts`+`fs-local`+`tool-fs`；`packages/subprocess/subprocess/src/index.ts`+`subprocess-local/spawn.ts`；`packages/shell/shell`+`bash-local`+`tool-bash`；`packages/terminal/*`；`packages/sandbox/sandbox/src/index.ts`+`sandbox-policy`+`sandbox-local`；`packages/ssh/*`

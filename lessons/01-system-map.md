@@ -67,6 +67,9 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 57 | 段落拼装（section + 中央排号） | **各报各的编号段落** | 系统提示 = 各插件带唯一名字、统一分配编号的段落排队拼接；稳定内容在前、本机易变在后 | 文件 packages/core/system-prompt/src/index.ts 第 53、125 行 |
 | 58 | 缓存前缀与运行时快照 | **开头不动省钱，易变走后门** | 逐字节相同的开头可复用模型侧缓存；每步都变的运行时上下文作为用户角色快照消息追加 | 文件 packages/core/system-prompt/src/index.ts 第 303 行；packages/context/* |
 | 59 | agent.inject() | **挂来源标记的插话** | 文件变更、技能内容、定时通知等经用户消息通道入档上镜，靠 source 区分来源 | 文件 packages/core/session/src/types.ts 第 308 行 |
+| 60 | 中立词表（消息 / 流 / 统一失败） | **口岸世界语** | 口岸内侧只讲消息词表与流词表，错误统一带稳定代码；厂商方言挡在口岸外 | 文件 packages/llm/llm/src/types.ts；docs/cookbook/adding-an-llm-adapter.md |
+| 61 | LLM adapter | **翻译官** | 继承基类、核心一个 stream 方法；注册是 effect、一条路线一个翻译官；参考实现直连与包 SDK 各一 | 文件 packages/llm/llm/src/index.ts 第 396 行；packages/llm/llm-deepseek/src/adapter.ts |
+| 62 | prepareCall 票根 | **验票台** | 验票时定下厂商默认值、窗口大小、系统提示与工具增补的处理方式；loop 只认票根不认厂商名 | 文件 packages/llm/llm/src/index.ts 第 278 行；packages/core/agent-loop/src/agent.ts 第 547 行 |
 
 ## 二、全景图（一张，字写全）
 
