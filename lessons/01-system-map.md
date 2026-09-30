@@ -61,6 +61,9 @@ Cordis = 一栋楼的**物业系统**。插件不是"组件"，是**入驻的商
 | 51 | turn / step（回合 / 步） | **工单与工序** | turn = 从认领一批输入到没活儿收工，结束原因一并入档；step = 一次模型调用 + 它要求的全部工具执行；一个回合常有多步 | 文件 packages/core/agent-loop/src/agent.ts 第 296、398 行 |
 | 52 | durable inbox / claim | **排队台账** | 收件箱分 next-turn / next-step 两格，每次进出都记一条事件（断电不丢队）；claim = 开跑前把整批从队列拿走 | 文件 packages/core/agent-loop/src/inbox.ts 第 109、227 行 |
 | 53 | 请求 = 日志派生 + 冻结 | **先验票、后记账、再发车** | 请求 = 配置 + 从日志誊出并冻结的消息 + 工具清单；loop 不自存对话，重放日志即可复现请求 | 文件 packages/core/agent-loop/src/agent.ts 第 547、599 行 |
+| 54 | 三道工具闸（pre-execute / execute / post-execute） | **安检三段** | 开跑前门卫四种表态（放行/拦下/取消/问人）；执行中包场护栏（超时重试）；跑完后验收（收下/退货） | 文件 packages/core/tools/src/index.ts 第 607、731 行；docs/tool-execution-pipeline.md |
+| 55 | 单调门卫（ToolGuard） | **只会拦的保安** | 只回答"拦"或"不表态"，永远说不出"放行"——排队顺序翻不了案 | 文件 packages/core/tools/src/index.ts 第 731 行 |
+| 56 | 审批接缝（`ctx.approval`） | **问人的传话筒** | ask 决定沿作用域话筒递给能拍板的前端（终端/网页/SDK）；答不了算拦；问答都入档 | 文件 packages/interaction/user-approval/src/index.ts 第 150、282 行 |
 
 ## 二、全景图（一张，字写全）
 
