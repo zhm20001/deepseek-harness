@@ -34,6 +34,22 @@
 
 **推论**：三道闸对应三种介入姿势——**否决、改写、续期**。姿势选错了就白搭：在通知频道上想否决，行不通。
 
+三道闸在一轮工作路上的位置：
+
+```mermaid
+flowchart LR
+    BIRTH["开业闸 agent/created<br/>serial 排队检查<br/>有人说不 → 整个开业回滚"]
+    START[认领一批活儿] --> G1{{"开跑前闸 agent/pre-step<br/>否决 / 换材料"}}
+    G1 --> G2{{"发车前闸 agent/request<br/>只换配置，乘客（消息）不动"}}
+    G2 --> RUN[模型调用 + 工具执行]
+    RUN --> G3{{"收工前闸 agent/turn-stopping<br/>反对 = 递新工单（steer）"}}
+    G3 -->|还有活| RUN
+    G3 -->|没活| END[收工，回合结束]
+    BIRTH -.->|开业放行| START
+```
+
+读法：三道闸各管一种介入姿势——否决、改写、续期；开业闸是第四道，管的不是一轮而是存在本身。
+
 ### 四、三问检验：守闸的人
 
 拿三问读 `dsh-plan-mode`：**provide** 什么——`ctx.planMode`（计划模式开关的招牌）；**inject** 什么——`['tools', 'systemPrompt', 'sessionProjections']`；**on** 什么——`agent/pre-step`。它不碰 loop 的代码，只在闸门上表态："插件，不改 loop"的又一次兑现。
