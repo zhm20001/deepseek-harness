@@ -44,6 +44,37 @@
 
 **推论**：界面卡片和模型看到的结论出自同一份冻结快照——界面不会骗模型，模型也不会骗界面。
 
+一次调用从"模型说想调"到"结果入档"的全程：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant L as loop（喊话人）
+    participant R as 档案室 Session
+    participant G as 门卫 pre-execute
+    participant A as 审批接缝
+    participant T as 工具本体（外包场护栏）
+    participant V as 验收 post-execute
+
+    L->>R: tool/call 先入档（模型原话，过后不许改）
+    L->>G: 拿着账走闸，请表态
+    Note over G: 旁边一排保安：只会拦、不会放<br/>排队顺序翻不了案
+    alt 问人（ask）
+        G->>A: 递给能拍板的前台（终端/网页/SDK）
+        A-->>G: 答复；没人能答 = 拦下
+    end
+    alt 拦下 / 取消
+        G-->>L: 拒绝回执，工具本体一次不跑
+    else 放行
+        G->>T: 调 next() 放行（超时重试在护栏上）
+        T->>V: 结果先拍快照冻住，坏数据当场抛
+        V-->>L: 收下 / 退货 / 贴便签给下一轮模型
+    end
+    L->>R: tool/result 入档——每笔调用只有一条结果
+```
+
+读法：账在闸前，闸只放行或拦下——想影响一次调用，只有站上闸这一条路；旁门（子代理、代码模式的内部转发）过的也是这三道闸。
+
 ### 五、三问检验：审批招牌
 
 拿三问读 `dsh-user-approval`：**provide** 什么——`ctx.approval`（先按会话策略裁一道，再把问题递给能拍板的人）；**inject** 什么——`['systemPrompt']`（把"现在会不会问你"写进系统提示，让模型心里有数）；**on** 什么——无。它是 `approval/request`（waterfall）的**发声者**，把问题沿 03 课的作用域话筒递给这个 agent 的前端。
