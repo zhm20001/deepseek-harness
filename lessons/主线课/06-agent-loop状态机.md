@@ -44,6 +44,30 @@
 
 **推论**：档案里从不出现"半截的事"：要么完整一步，要么带标记的收尾。这就是"取消发生在提交前/后，日志不一样"的准话。
 
+整台机器只有三个状态，回合内部的顺序都发生在第三个里：
+
+```mermaid
+stateDiagram-v2
+    state "空闲 idle" as idle
+    state "整备 maintenance" as maint
+    state "跑回合 running" as running
+
+    [*] --> idle
+    idle --> maint: 有人委托后台活儿（如压缩）
+    maint --> idle: 活儿干完
+    idle --> running: 收件箱有话，开工
+    running --> running: 这回合没干完，再来一回合
+    running --> idle: 收工或掐表结算，原因一律入档
+
+    note right of running
+        一步的顺序：认领 → 开跑前闸 → 派生并冻结
+        → 发车前闸 → 流式 → 工具执行 → 收工前闸
+        重试发生在同一步内：只重发，不重跑装配与入档
+    end note
+```
+
+读法：掐表不改变状态机的形状，只改变收工的原因——档案里照样没有半截的事。
+
 ### 五、三问检验：loop 自己
 
 拿三问读 `dsh-agent-loop`：**provide** 什么——`ctx.agentLoop` 招牌，并把自己登记为 `ctx.agents` 的造 agent 工厂；**inject** 什么——`['agents', 'sessions', 'llm', 'tools', 'systemPrompt', 'sessionProjections']`（六个接缝的纯消费者——后面课程会逐一走进去）；**on** 什么——无。它和 04 课的 session 一样是**发声者**：05 课那三道闸、所有 `agent/*` 通知，都是它喊的。
