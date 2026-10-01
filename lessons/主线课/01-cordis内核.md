@@ -48,6 +48,32 @@
 
 **推论**：配置错误在装载当场暴露，不会拖到运行中途才炸。
 
+一张登记条的一生（六个章，名字不用背，看形状）：
+
+```mermaid
+stateDiagram-v2
+    state "排队 PENDING<br/>代码体一行未执行" as pending
+    state "跑插件体 LOADING" as loading
+    state "营业 ACTIVE" as active
+    state "读作 FAILED<br/>不是盖章，是出错账没清时读出来" as failed
+    state "结业中 UNLOADING" as unloading
+    state "已注销 DISPOSED" as disposed
+
+    [*] --> pending: 登记条建好
+    pending --> loading: 依赖齐了，开始执行
+    loading --> active: 插件体跑完，招牌挂上
+    loading --> failed: 配置不合法 / 代码体抛错
+    active --> pending: 依赖的招牌被摘，退回排队
+    failed --> loading: 重装清账，重跑一遍
+    pending --> unloading: 结业或改配置
+    active --> unloading: 结业或改配置
+    failed --> unloading: 结业或改配置
+    unloading --> loading: 改配置，重跑
+    unloading --> disposed: 撤销单逆序执行完毕
+```
+
+读法：要带走的只有形状——排队与营业来回翻转（开关插件安全可逆）；FAILED 是"读"出来的不是"盖"上的；进结业必先过撤销单。
+
 ## 记住什么 / 不用记什么
 
 **记（5 个）**：前台（ctx）；inject——需求满足，不是加载顺序；拉服务与推事件（三问口诀）；waterfall 必须调 `next()`（否则静默否决）；登记留撤销单（卸载必然可逆）。

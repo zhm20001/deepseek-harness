@@ -46,6 +46,7 @@
 | Scope 的发源 | `packages/core/scope/src/index.ts:137`（createScope：一个 fiber + 一套带 ID 的前台）；`store.ts`（按 ID 分层的登记表） |
 | 接缝的官方定义 | `docs/glossary.md` 搜 "seam"；全量接缝清单 `docs/capability-seams.md`（表格三列即三角色） |
 | 贯穿实例 | `packages/todo/tool-todo/src/index.ts:22-23`（inject 清单） |
+| 时间视图（图） | `../01-system-map.md` 时序图二：一次被守卫拦下的工具调用（名单顺序与前台过滤）；全景图：一套前台怎么派生 |
 | 原始精读版 | `lessons/03-scope.md`（同讲法首版） |
 
 ## 自测（可选）

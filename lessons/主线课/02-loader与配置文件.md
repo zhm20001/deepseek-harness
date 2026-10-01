@@ -54,6 +54,7 @@
 | 写回（哪些操作才落盘） | `vendor/loader/src/config/tree.ts:97`（树级 API）；`vendor/include/src/index.ts:289`（原子写） |
 | 自杀式停用为何持久 | `vendor/loader/src/index.ts:129`（检测插件自我 dispose 后写回 disabled） |
 | HMR 三分支 | `vendor/hmr/src/index.ts:129` |
+| 时间视图（图） | `../01-system-map.md` 时序图三：改配置 → 卸载 → 重跑的全程；时序图一：装载与会签的先后（`!!js` 的插值落点） |
 | 原始精读版（含两段实跑与四个实跑坑） | `lessons/02-loader.md`、`lessons/demos.md` 第四、五节 |
 
 ## 自测（可选）
