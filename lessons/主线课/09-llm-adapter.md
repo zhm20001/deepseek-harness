@@ -42,6 +42,32 @@
 
 **推论**：不变量④的字面兑现——Definition（llm 服务与两份词表）不含任何一家厂商的私有物，所以 Provider 想换就换。
 
+一次调用过口岸的全程：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant L as loop
+    participant C as 柜台 llm 服务
+    participant A as 翻译官 adapter
+    participant V as 厂商（方言区）
+
+    L->>C: 验票 prepareCall
+    C->>A: 问这家的默认值 / 窗口 / 处理方式
+    A-->>C: 票根（生效配置、窗口、重试策略）
+    L->>C: 发车——世界语请求（消息词表）
+    C->>A: 转交（GenerateOptions）
+    A->>V: 译成方言发出去（HTTP / SSE）
+    alt 流回来
+        A-->>C: StreamChunk 世界语流<br/>用量先于收尾，收尾后无事件
+    else 出错
+        A-->>C: 统一失败 LlmError（稳定代码）
+    end
+    Note over A,V: 不支持的选项大声报错，不悄悄扔掉<br/>取消信号随时被尊重
+```
+
+读法：口岸内侧只出现世界语和票根字段——"换厂商"就是换一名翻译官，柜台、排号表、状态机全员不动。
+
 ### 五、三问检验：翻译官本人
 
 拿三问读 `llm-deepseek` 的接线层：**provide** 什么——无（它不挂新招牌，把自己的翻译官登记进 `ctx.llm` 的名册，占住一条厂商路线）；**inject** 什么——`['llm']`（名册所在的招牌）；**on** 什么——基本无，只跟着配置热更新同步一次重试策略。它是最纯粹的 Provider：名字不上 ctx，只在名册里占一行。
